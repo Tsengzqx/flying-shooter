@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<title>星际突袭 · 飞行射击</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<div id="game-wrap">
+  <canvas id="game"></canvas>
+
+  <!-- ============ 游戏内 HUD ============ -->
+  <div id="hud" class="hidden">
+    <div class="hud-item hud-score">
+      <span class="hud-label">SCORE</span>
+      <span id="hud-score" class="hud-value">0</span>
+    </div>
+    <div class="hud-item hud-level">
+      <span id="hud-level" class="hud-value">LV 1</span>
+    </div>
+    <div class="hud-item hud-lives">
+      <span id="hud-lives" class="hud-value">♥♥♥</span>
+    </div>
+    <div class="hud-item hud-best">
+      <span class="hud-label">BEST</span>
+      <span id="hud-best" class="hud-value">0</span>
+    </div>
+  </div>
+
+  <!-- ============ 主菜单 ============ -->
+  <div id="screen-menu" class="screen">
+    <div class="screen-box">
+      <h1 class="title">星际<span>突袭</span></h1>
+      <p class="subtitle">S T A R &nbsp; S T R I K E</p>
+
+      <div class="rules">
+        <div class="rule"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / <kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd> 移动</div>
+        <div class="rule"><span class="auto-fire">自动开火</span> —— 专心走位、躲弹幕</div>
+        <div class="rule"><kbd>P</kbd> / <kbd>Esc</kbd> 暂停　<kbd>M</kbd> 音效开关</div>
+        <div class="rule touch-tip">📱 触屏：手指移到哪，飞机跟到哪</div>
+      </div>
+
+      <button id="btn-start" class="btn btn-primary">开 始 游 戏</button>
+      <p class="best-line">最高分 <span id="menu-best">0</span></p>
+    </div>
+  </div>
+
+  <!-- ============ 暂停 ============ -->
+  <div id="screen-pause" class="screen hidden">
+    <div class="screen-box">
+      <h2 class="title2">已 暂 停</h2>
+      <p class="subtitle">PAUSED</p>
+      <div class="btn-row">
+        <button id="btn-resume" class="btn btn-primary">继续</button>
+        <button id="btn-quit" class="btn">回主菜单</button>
+      </div>
+      <p class="hint">按 <kbd>P</kbd> 或 <kbd>Esc</kbd> 也可继续</p>
+    </div>
+  </div>
+
+  <!-- ============ 结算 ============ -->
+  <div id="screen-over" class="screen hidden">
+    <div class="screen-box">
+      <h2 class="title2 over-title">游 戏 结 束</h2>
+      <p id="over-record" class="record hidden">🏆 新 纪 录 !</p>
+
+      <div class="final">
+        <div class="final-row">
+          <span class="lbl">本局得分</span>
+          <span id="over-score" class="val">0</span>
+        </div>
+        <div class="final-row">
+          <span class="lbl">历史最高</span>
+          <span id="over-best" class="val dim">0</span>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button id="btn-restart" class="btn btn-primary">再 来 一 局</button>
+        <button id="btn-menu" class="btn">主菜单</button>
+      </div>
+    </div>
+  </div>
+  <!-- ============ Roguelike 强化三选一 ============ -->
+  <div id="screen-upgrade" class="screen upgrade-screen hidden">
+    <div class="upgrade-box">
+      <h2 class="upgrade-title">强 化 选 择</h2>
+      <p class="upgrade-sub">等级 <span id="upgrade-level">2</span> · 三 选 一</p>
+
+      <div id="upgrade-cards" class="cards"></div>
+
+      <p class="upgrade-hint">点击卡片选择 · 也可按 <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></p>
+
+      <div id="upgrade-owned" class="owned"></div>
+    </div>
+  </div>
+
+  <!-- 屏幕中部的临时提示（静音切换等） -->
+  <div id="toast" class="toast"></div>
+</div>
+
+<!-- ============ 脚本加载顺序 ============ -->
+<!-- 各模块统一挂到 window.Game 上，main.js 只做存在性检查， -->
+<!-- 所以下面这些文件可以逐个补齐，缺谁都不会报错。 -->
+<script src="js/main.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/input.js"></script>
+<script src="js/bullets.js"></script>
+<script src="js/player.js"></script>
+<script src="js/enemies.js"></script>
+<script src="js/boss.js"></script>
+<script src="js/combat.js"></script>
+<script src="js/particles.js"></script>
+<script src="js/powerups.js"></script>
+<script src="js/progress.js"></script>
+<script src="js/upgrades.js"></script>
+<script src="js/panel.js"></script>
+</body>
+</html>

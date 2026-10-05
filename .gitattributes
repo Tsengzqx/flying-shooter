@@ -1,0 +1,8 @@
+# 统一换行符，避免 Windows / macOS 协作时整文件 diff
+* text=auto eol=lf
+
+# 二进制文件不做换行转换
+*.png binary
+*.jpg binary
+*.zip binary
+*.ico binary

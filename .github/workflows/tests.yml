@@ -1,0 +1,29 @@
+name: tests
+
+# 每次 push / PR 都跑一遍 313 项冒烟测试（纯 Node，不需要浏览器）
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 准备 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 运行冒烟测试
+        run: node tools/smoke-test.js
+
+      - name: 构建单文件版并验证产物
+        run: |
+          node tools/build.js
+          SMOKE_BUNDLE='dist/星际突袭.html' node tools/smoke-test.js

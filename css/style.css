@@ -1,0 +1,529 @@
+/* ============================================================
+   星际突袭 · 样式表
+   ① 框架部分：画布铺满、HUD、三种界面（主菜单/暂停/结算）
+   ============================================================ */
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #03040c;
+  color: #e8f4ff;
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+#game-wrap {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+#game {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;   /* 触屏拖动不触发页面滚动 */
+}
+
+.hidden { display: none !important; }
+
+/* ------------------------------------------------------------
+   HUD
+   ------------------------------------------------------------ */
+#hud {
+  position: absolute;
+  inset: 0;
+  padding: 14px 18px;
+  padding-top: calc(14px + env(safe-area-inset-top));
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 12px rgba(80, 200, 255, .55);
+}
+
+.hud-item { position: absolute; }
+
+.hud-score { left: 18px; top: 14px; }
+.hud-best  { left: 18px; top: 56px; }
+
+.hud-level {
+  left: 50%;
+  top: 14px;
+  transform: translateX(-50%);
+  color: #ffd166;
+  letter-spacing: 2px;
+  text-shadow: 0 0 12px rgba(255, 190, 60, .6);
+}
+
+.hud-lives {
+  right: 18px;
+  top: 14px;
+  color: #ff5c7a;
+  letter-spacing: 4px;
+  font-size: 22px;
+  text-shadow: 0 0 12px rgba(255, 70, 110, .7);
+}
+
+.hud-label {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 3px;
+  color: #6f8cb0;
+  text-shadow: none;
+}
+
+.hud-value {
+  display: block;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  line-height: 1.15;
+}
+
+.hud-best .hud-value { font-size: 15px; color: #8fb6dd; }
+
+/* ------------------------------------------------------------
+   全屏界面遮罩（主菜单 / 暂停 / 结算）
+   ------------------------------------------------------------ */
+.screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 50% 35%, rgba(30, 90, 180, .28), transparent 62%),
+    rgba(3, 6, 18, .82);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  animation: fadeIn .25s ease both;
+  z-index: 10;
+}
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.screen-box {
+  width: min(460px, 100%);
+  text-align: center;
+  animation: riseIn .35s cubic-bezier(.2, .9, .3, 1.2) both;
+}
+
+@keyframes riseIn {
+  from { opacity: 0; transform: translateY(18px) scale(.97); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* 标题 */
+.title {
+  margin: 0 0 6px;
+  font-size: clamp(38px, 11vw, 62px);
+  font-weight: 900;
+  letter-spacing: 6px;
+  line-height: 1.05;
+  background: linear-gradient(180deg, #ffffff 0%, #6fe6ff 45%, #1f8fff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 22px rgba(70, 180, 255, .55));
+}
+
+.title span {
+  background: linear-gradient(180deg, #ffe89a 0%, #ffb03a 55%, #ff5c7a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.title2 {
+  margin: 0 0 4px;
+  font-size: clamp(28px, 8vw, 42px);
+  font-weight: 800;
+  letter-spacing: 8px;
+  color: #eaf6ff;
+  text-shadow: 0 0 24px rgba(90, 190, 255, .6);
+}
+
+.over-title { color: #ffd0d8; text-shadow: 0 0 24px rgba(255, 90, 120, .6); }
+
+.subtitle {
+  margin: 0 0 26px;
+  font-size: 11px;
+  letter-spacing: 6px;
+  color: #6f8cb0;
+}
+
+/* 操作说明 */
+.rules {
+  margin: 0 auto 26px;
+  display: grid;
+  gap: 9px;
+  font-size: 13px;
+  color: #a9c6e4;
+}
+
+.rule { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; }
+
+kbd {
+  display: inline-block;
+  min-width: 24px;
+  padding: 3px 7px;
+  border: 1px solid rgba(120, 190, 255, .35);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: rgba(30, 70, 130, .35);
+  color: #cfe9ff;
+  font: 600 11px/1 ui-monospace, Consolas, monospace;
+}
+
+.touch-tip { color: #6f8cb0; font-size: 12px; }
+
+.auto-fire {
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: rgba(110, 231, 168, .16);
+  color: #7bf0b4;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 1px;
+}
+
+/* 按钮 */
+.btn {
+  appearance: none;
+  border: 1px solid rgba(120, 190, 255, .35);
+  border-radius: 10px;
+  padding: 13px 30px;
+  margin: 4px;
+  background: rgba(20, 45, 90, .55);
+  color: #cfe9ff;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  cursor: pointer;
+  transition: transform .12s ease, box-shadow .2s ease, background .2s ease;
+}
+
+.btn:hover { background: rgba(30, 70, 140, .7); transform: translateY(-2px); }
+.btn:active { transform: translateY(0) scale(.97); }
+
+.btn-primary {
+  border-color: rgba(110, 235, 255, .6);
+  background: linear-gradient(180deg, rgba(40, 150, 230, .85), rgba(20, 90, 190, .85));
+  color: #fff;
+  box-shadow: 0 0 26px rgba(60, 170, 255, .45), inset 0 1px 0 rgba(255, 255, 255, .25);
+}
+
+.btn-primary:hover {
+  box-shadow: 0 0 38px rgba(90, 200, 255, .65), inset 0 1px 0 rgba(255, 255, 255, .3);
+}
+
+.btn-row { display: flex; justify-content: center; flex-wrap: wrap; }
+
+.best-line { margin: 20px 0 0; font-size: 12px; letter-spacing: 2px; color: #6f8cb0; }
+.best-line span { color: #ffd166; font-weight: 700; }
+
+.hint { margin: 18px 0 0; font-size: 12px; color: #6f8cb0; }
+
+/* 结算 */
+.record {
+  margin: 6px 0 14px;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 3px;
+  color: #ffd166;
+  text-shadow: 0 0 20px rgba(255, 200, 70, .8);
+  animation: blink 1s steps(2, end) infinite;
+}
+
+@keyframes blink { 50% { opacity: .35; } }
+
+.final {
+  margin: 22px auto 26px;
+  width: min(300px, 100%);
+  display: grid;
+  gap: 12px;
+}
+
+.final-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed rgba(110, 150, 200, .28);
+}
+
+.final-row .lbl { font-size: 12px; letter-spacing: 2px; color: #8fb6dd; }
+.final-row .val { font-size: 26px; font-weight: 800; color: #7fe6ff; font-variant-numeric: tabular-nums; }
+.final-row .val.dim { font-size: 18px; color: #8fb6dd; }
+
+/* ------------------------------------------------------------
+   屏幕提示条（Toast）
+   ------------------------------------------------------------ */
+.toast {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  transform: translate(-50%, -50%) scale(.94);
+  padding: 10px 22px;
+  border: 1px solid rgba(120, 200, 255, .35);
+  border-radius: 30px;
+  background: rgba(6, 14, 30, .82);
+  color: #d6ecff;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .22s ease, transform .22s ease;
+  z-index: 30;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+/* ------------------------------------------------------------
+   Roguelike 强化三选一
+   ------------------------------------------------------------ */
+.upgrade-screen {
+  align-items: center;
+  background:
+    radial-gradient(circle at 50% 40%, rgba(60, 40, 140, .38), transparent 66%),
+    rgba(3, 6, 18, .88);
+}
+
+.upgrade-box {
+  width: min(880px, 100%);
+  text-align: center;
+}
+
+.upgrade-title {
+  margin: 0 0 4px;
+  font-size: clamp(24px, 6vw, 38px);
+  font-weight: 900;
+  letter-spacing: 8px;
+  background: linear-gradient(180deg, #fff6d8 0%, #ffd166 50%, #ff9a3a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 20px rgba(255, 190, 60, .5));
+}
+
+.upgrade-sub {
+  margin: 0 0 22px;
+  font-size: 12px;
+  letter-spacing: 4px;
+  color: #8fb6dd;
+}
+
+.upgrade-sub span { color: #ffd166; font-weight: 700; }
+
+/* ---------- 卡片区 ---------- */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  padding: 20px 14px 16px;
+  border: 2px solid rgba(120, 190, 255, .3);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(24, 42, 78, .85), rgba(10, 16, 34, .92));
+  color: #e8f4ff;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: center;
+  transition: transform .14s ease, box-shadow .2s ease, border-color .2s ease;
+  animation: cardIn .32s cubic-bezier(.2, .9, .3, 1.15) both;
+}
+
+.card:nth-child(2) { animation-delay: .06s; }
+.card:nth-child(3) { animation-delay: .12s; }
+
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(22px) scale(.94); }
+  to   { opacity: 1; transform: none; }
+}
+
+.card:hover { transform: translateY(-6px); }
+.card:active { transform: translateY(-2px) scale(.98); }
+
+.card-hot {
+  position: absolute;
+  top: 9px;
+  left: 11px;
+  width: 20px;
+  height: 20px;
+  line-height: 20px;
+  border-radius: 6px;
+  background: rgba(120, 190, 255, .18);
+  color: #8fb6dd;
+  font: 700 11px/20px ui-monospace, Consolas, monospace;
+}
+
+.card-tag {
+  font-size: 10px;
+  letter-spacing: 2px;
+  padding: 2px 7px;
+  border-radius: 20px;
+  color: #6f8cb0;
+  background: rgba(120, 190, 255, .1);
+}
+
+/* ---------- 流派配色 ---------- */
+.build-swarm   { color: #7fe0ff !important; background: rgba(86, 214, 255, .14) !important; }
+.build-item    { color: #ffc46b !important; background: rgba(255, 176, 58, .14) !important; }
+.build-level   { color: #7bf0b4 !important; background: rgba(110, 231, 168, .14) !important; }
+.build-general { color: #a9c6e4 !important; background: rgba(140, 180, 220, .12) !important; }
+
+.chip.build-swarm   { border-color: rgba(86, 214, 255, .45); }
+.chip.build-item    { border-color: rgba(255, 176, 58, .45); }
+.chip.build-level   { border-color: rgba(110, 231, 168, .45); }
+.chip.build-general { border-color: rgba(140, 180, 220, .3); }
+
+.card-icon { font-size: 34px; line-height: 1; filter: drop-shadow(0 0 10px rgba(120, 200, 255, .45)); }
+
+.card-name { font-size: 17px; font-weight: 800; letter-spacing: 1px; }
+
+.card-desc {
+  font-size: 12px;
+  line-height: 1.55;
+  color: #a9c6e4;
+  min-height: 2.6em;
+}
+
+/* 升级增量说明：明确告诉玩家再升一级多拿到什么 */
+.card-delta {
+  width: 100%;
+  padding: 5px 9px;
+  border-left: 2px solid rgba(110, 231, 168, .55);
+  border-radius: 4px;
+  background: rgba(110, 231, 168, .10);
+  font-size: 11px;
+  line-height: 1.5;
+  color: #8fffbf;
+  text-align: left;
+}
+
+.card-stack {
+  margin-top: 2px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: rgba(120, 190, 255, .13);
+  font-size: 11px;
+  font-weight: 700;
+  color: #9fd8ff;
+}
+
+/* ---------- 品质配色 ---------- */
+.card.rarity-common { border-color: rgba(127, 180, 232, .45); }
+.card.rarity-common:hover { box-shadow: 0 10px 30px rgba(80, 140, 220, .35); border-color: #7fb4e8; }
+
+.card.rarity-rare { border-color: rgba(86, 214, 255, .55); box-shadow: inset 0 0 30px rgba(40, 140, 220, .16); }
+.card.rarity-rare:hover { box-shadow: 0 10px 34px rgba(86, 214, 255, .45); border-color: #56d6ff; }
+.card.rarity-rare .card-name { color: #9fe6ff; }
+
+.card.rarity-epic {
+  border-color: rgba(201, 140, 255, .65);
+  box-shadow: inset 0 0 34px rgba(140, 60, 220, .2);
+  background: linear-gradient(180deg, rgba(48, 26, 84, .9), rgba(12, 10, 30, .94));
+}
+.card.rarity-epic:hover { box-shadow: 0 10px 40px rgba(201, 140, 255, .5); border-color: #d9a6ff; }
+.card.rarity-epic .card-name { color: #e0bbff; }
+.card.rarity-epic .card-stack { background: rgba(201, 140, 255, .18); color: #dcb6ff; }
+
+/* ---------- 金色（最高品质） ---------- */
+.card.rarity-gold {
+  border-color: #ffd166;
+  background: linear-gradient(180deg, rgba(98, 72, 18, .94), rgba(26, 18, 6, .96));
+  box-shadow: inset 0 0 44px rgba(255, 190, 60, .25), 0 0 26px rgba(255, 190, 60, .30);
+}
+
+.card.rarity-gold:hover {
+  border-color: #ffe9a8;
+  box-shadow: inset 0 0 50px rgba(255, 190, 60, .38), 0 10px 44px rgba(255, 190, 60, .60);
+}
+
+.card.rarity-gold .card-name {
+  color: #ffe9a8;
+  text-shadow: 0 0 14px rgba(255, 200, 70, .8);
+}
+
+.card.rarity-gold .card-desc { color: #ecdcae; }
+.card.rarity-gold .card-tag { background: rgba(255, 190, 60, .18) !important; color: #ffd166 !important; }
+.card.rarity-gold .card-stack { background: rgba(255, 190, 60, .2); color: #ffe9a8; }
+.card.rarity-gold .card-delta {
+  border-left-color: rgba(255, 209, 102, .7);
+  background: rgba(255, 190, 60, .12);
+  color: #ffe9a8;
+}
+
+/* ---------- 已获得强化 ---------- */
+.upgrade-hint { margin: 0 0 14px; font-size: 12px; color: #6f8cb0; }
+
+.owned {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  max-height: 96px;
+  overflow-y: auto;
+  padding-top: 12px;
+  border-top: 1px dashed rgba(110, 150, 200, .22);
+}
+
+.chip {
+  padding: 3px 9px;
+  border: 1px solid rgba(120, 190, 255, .25);
+  border-radius: 20px;
+  background: rgba(20, 45, 90, .5);
+  font-size: 11px;
+  color: #bcd8f2;
+  white-space: nowrap;
+}
+
+.chip b { color: #ffd166; }
+.chip.empty { color: #5d7898; border-style: dashed; }
+.chip.rarity-rare { border-color: rgba(86, 214, 255, .4); }
+.chip.rarity-epic { border-color: rgba(201, 140, 255, .5); color: #dcb6ff; }
+
+/* ---------- 小屏适配 ---------- */
+@media (max-width: 720px) {
+  .cards { grid-template-columns: 1fr; gap: 9px; max-height: 56vh; overflow-y: auto; }
+  .card { flex-direction: row; flex-wrap: wrap; justify-content: flex-start; text-align: left; padding: 12px 14px; gap: 4px 10px; }
+  .card-icon { font-size: 26px; }
+  .card-name { font-size: 15px; }
+  .card-desc { min-height: 0; flex-basis: 100%; }
+  .card-hot { position: static; width: auto; height: auto; padding: 0 6px; line-height: 18px; }
+  .upgrade-sub { margin-bottom: 12px; }
+  .owned { max-height: 62px; }
+}
+
+@media (max-height: 560px) {
+  .rules { margin-bottom: 16px; gap: 5px; font-size: 12px; }
+  .subtitle { margin-bottom: 16px; }
+  .final { margin: 14px auto 16px; }
+  .btn { padding: 10px 22px; font-size: 14px; }
+
+  .upgrade-title { font-size: 22px; }
+  .upgrade-sub { margin-bottom: 10px; }
+  .card { padding: 10px; }
+  .card-icon { font-size: 24px; }
+}

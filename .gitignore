@@ -1,0 +1,16 @@
+# 构建产物 —— 用 node tools/build.js 可随时重新生成
+dist/
+
+# 依赖
+node_modules/
+
+# 临时文件
+_*.txt
+*.log
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
