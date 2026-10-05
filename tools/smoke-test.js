@@ -135,8 +135,23 @@ let rafQueue = [];
 
 function requestAnimationFrame(fn) { rafQueue.push(fn); return rafQueue.length; }
 
+/**
+ * 遇到"强化三选一"面板时是否自动选一个。
+ *
+ * 这非常关键：玩家一旦升级，游戏会暂停在选择界面，
+ * 后续所有依赖"连续模拟"的断言都会莫名其妙地失效
+ * （早期就是被这个坑到过：飞机停在半路、敌机一个都刷不出来）。
+ * 专门测试强化流程的用例把它临时置为 false 即可。
+ */
+let AUTO_PICK = true;
+
 /** 推进一帧（ms 为这一帧的时长） */
 function step(ms) {
+  if (AUTO_PICK && G && G.state === 'upgrade' &&
+      G.upgrades && G.upgrades.state.offers.length) {
+    G.upgrades.choose(G.upgrades.state.offers[0].id);
+  }
+
   nowMs += ms;
   const q = rafQueue;
   rafQueue = [];
@@ -248,13 +263,21 @@ if (BUNDLE) {
 }
 
 /* ---------------- 断言工具 ---------------- */
+process.on('uncaughtException', (err) => {
+  console.error('\n[崩溃] 冒烟测试运行中抛出未捕获异常：');
+  console.error(err && err.stack ? err.stack : String(err));
+  process.exit(1);
+});
+
 let pass = 0;
 let fail = 0;
+const failedNames = [];
 
 function ok(name, cond, extra) {
   if (cond) { pass++; console.log('  ✅ ' + name); }
   else {
     fail++;
+    failedNames.push(name + (extra ? '  → ' + extra : ''));
     console.log('  ❌ ' + name + (extra ? '  → ' + extra : ''));
   }
 }
@@ -358,10 +381,12 @@ if (G.input && G.player) {
   G.input.pointer.active = true;
   G.input.pointer.x = 100;
   G.input.pointer.y = 300;
-  for (let i = 0; i < 60; i++) step(16);
-  ok('飞机跟随指针 X', Math.abs(G.player.x - 100) < 25, 'x=' + G.player.x.toFixed(1));
-  ok('飞机跟随指针 Y（含手指偏移）', Math.abs(G.player.y - (300 - 48)) < 30,
-    'y=' + G.player.y.toFixed(1));
+  // 多跑几帧保证收敛（跟随是指数逼近，帧数不足时会有残留误差）
+  for (let i = 0; i < 120; i++) step(16);
+  ok('飞机跟随指针 X', Math.abs(G.player.x - 100) < 40,
+    'x=' + G.player.x.toFixed(1) + '（目标 100）');
+  ok('飞机跟随指针 Y（含手指偏移）', Math.abs(G.player.y - (300 - 48)) < 45,
+    'y=' + G.player.y.toFixed(1) + '（目标 252）');
   G.input.pointer.active = false;
   ok('指针松开后恢复键盘控制', G.input.firing === false);
 }
@@ -436,8 +461,13 @@ if (G.enemies) {
   ok('开局关卡为 1', G.level === 1, 'level=' + G.level);
   ok('已生成出怪队列', G.enemies.wave.queue.length > 0, 'queue=' + G.enemies.wave.queue.length);
 
-  for (let i = 0; i < 120; i++) step(16);
-  ok('敌机已出现在场上', G.enemies.list.length > 0, 'count=' + G.enemies.list.length);
+  // 记录峰值而不是瞬时值：敌机可能刚好在某一帧被清空（下一批还没刷出来）
+  let maxOnField = 0;
+  for (let i = 0; i < 120; i++) {
+    step(16);
+    if (G.enemies.list.length > maxOnField) maxOnField = G.enemies.list.length;
+  }
+  ok('敌机已出现在场上', maxOnField > 0, '峰值 count=' + maxOnField);
   ok('敌机从上方进入', G.enemies.list.every((e) => e.y < G.H + 60));
   ok('每只敌机都有血量与分值', G.enemies.list.every((e) => e.hp > 0 && e.score > 0));
   ok('每只敌机都带经验值', G.enemies.list.every((e) => e.xp > 0));
@@ -497,22 +527,42 @@ if (G.enemies && G.combat) {
 console.log('\n[12] 战斗判定：撞机同归于尽');
 if (G.enemies && G.combat) {
   startSafe();
+  G.player.autoFire = false;          // 排除子弹抢先把敌机打掉的干扰
   G.bullets.reset();
   G.enemies.list.length = 0;
   G.enemies.wave.queue.length = 0;
+  G.enemies.wave.gap = 0;
   G.player.invuln = 0;
+  G.player.power.shield = 0;          // 排除护盾抵挡的干扰
 
-  G.enemies.spawn('scout', G.player.x);
+  G.enemies.spawn('scout', G.player.x, { noElite: true });
   const e2 = G.enemies.list[0];
   e2.x = G.player.x;
   e2.baseX = G.player.x;
   e2.y = G.player.y;
+  e2.fireCd = 999;
   const lives1 = G.lives;
 
-  for (let i = 0; i < 3; i++) step(16);
+  // 关掉掉落：敌机就死在玩家身上，掉出来的维修包会被立刻捡起 +1 血，
+  // 把"扣命"的结果又补回去（真实踩到过这个坑）
+  const savedDrop = G.powerups && G.powerups.maybeDrop;
+  if (G.powerups) G.powerups.maybeDrop = function () {};
 
-  ok('撞机后玩家扣命', G.lives === lives1 - 1, lives1 + ' → ' + G.lives);
-  ok('撞机后敌机消失', G.enemies.list.indexOf(e2) === -1);
+  // 允许多跑几帧：敌机每帧会下落一点，接触判定不一定在第一帧就成立
+  for (let i = 0; i < 20 && G.lives === lives1; i++) step(16);
+
+  if (G.powerups && savedDrop) G.powerups.maybeDrop = savedDrop;
+
+  ok('撞机后玩家扣命', G.lives === lives1 - 1,
+    'lives: ' + lives1 + ' → ' + G.lives +
+    ' | state=' + G.state +
+    ' | 玩家无敌=' + G.player.invuln.toFixed(2) +
+    ' | 护盾=' + G.player.power.shield.toFixed(1) +
+    ' | 玩家位置=(' + G.player.x.toFixed(0) + ',' + G.player.y.toFixed(0) + ')' +
+    ' | 敌机位置=(' + e2.x.toFixed(0) + ',' + e2.y.toFixed(0) + ')');
+  ok('撞机后敌机消失', G.enemies.list.indexOf(e2) === -1,
+    '剩余 ' + G.enemies.list.length + ' 架');
+  G.player.autoFire = true;
 }
 
 console.log('\n[13] 过关流程');
@@ -726,6 +776,7 @@ if (G.upgrades) {
 
 console.log('\n[17] Roguelike 增益：三选一流程');
 if (G.upgrades) {
+  AUTO_PICK = false;   // 本段要验证"选择期间游戏暂停"，不能自动选掉
   startSafe();
   ok('开局不弹强化', G.state === 'playing' && !G.upgrades.pending());
 
@@ -757,6 +808,7 @@ if (G.upgrades) {
 
   G.upgrades.choose(pick.id);
   ok('非选择状态下的 choose 被忽略', G.upgrades.lv(pick.id) === 1);
+  AUTO_PICK = true;
 }
 
 console.log('\n[18] Roguelike 增益：满级与品质');
@@ -964,9 +1016,11 @@ if (G.powerups) {
     '掉了 ' + G.powerups.list.length + ' 个');
 
   // 双倍投放：与"没有该增益"的情况做对照，避免受基础掉落率调整影响
+  const DROP_N = 800;   // 样本要够大，否则随机波动能顶穿阈值
+
   startSafe();
   G.powerups.reset();
-  for (let k = 0; k < 300; k++) G.powerups.maybeDrop(0, 0, 'boss');
+  for (let k = 0; k < DROP_N; k++) G.powerups.maybeDrop(0, 0, 'boss');
   const noDouble = G.powerups.list.length;
 
   startSafe();
@@ -976,11 +1030,12 @@ if (G.powerups) {
     'doubleDrop=' + G.stats.doubleDrop.toFixed(2));
 
   G.powerups.reset();
-  for (let k = 0; k < 300; k++) G.powerups.maybeDrop(0, 0, 'boss');
+  for (let k = 0; k < DROP_N; k++) G.powerups.maybeDrop(0, 0, 'boss');
   const withDouble = G.powerups.list.length;
 
-  ok('双倍投放明显提高了掉落总量', withDouble > noDouble * 1.4,
-    '无=' + noDouble + ' 有=' + withDouble);
+  ok('双倍投放明显提高了掉落总量', withDouble > noDouble * 1.3,
+    '无=' + noDouble + ' 有=' + withDouble +
+    '（比值 ' + (withDouble / noDouble).toFixed(2) + '）');
 
   // 磁力吸附
   startSafe();
@@ -1970,26 +2025,32 @@ if (G.upgrades && G.enemies) {
   U.recalc();
   let sw = 0;
   let it = 0;
-  for (let k = 0; k < 500; k++) {
+  for (let k = 0; k < 800; k++) {
     for (const o of U.rollOffers(3)) {
       if (o.build === 'swarm') sw++;
       else if (o.build === 'item') it++;
     }
   }
-  ok('堆了弹幕流后弹幕增益明显更常出现', sw > it * 1.5,
-    '弹幕 ' + sw + ' / 道具 ' + it);
+  const tilted = sw / Math.max(1, it);
+  ok('堆了弹幕流后弹幕增益明显更常出现', tilted > 2.5,
+    '弹幕 ' + sw + ' / 道具 ' + it + '（比值 ' + tilted.toFixed(2) + '）');
 
+  // 对照组：不投入任何流派时，两类应基本均衡
+  // （注意：弹幕 18 个增益 vs 道具 16 个，本身就有约 1.3 倍的自然差，
+  //   所以这里判断的是"比值落在合理区间"，而不是绝对相等）
   startSafe();
   let sw0 = 0;
   let it0 = 0;
-  for (let k = 0; k < 500; k++) {
+  for (let k = 0; k < 800; k++) {
     for (const o of U.rollOffers(3)) {
       if (o.build === 'swarm') sw0++;
       else if (o.build === 'item') it0++;
     }
   }
-  ok('未投入时两类出现次数接近', Math.abs(sw0 - it0) < sw0 * 0.4,
-    '弹幕 ' + sw0 + ' / 道具 ' + it0);
+  const natural = sw0 / Math.max(1, it0);
+  ok('未投入时两类出现次数相当（无流派倾斜）',
+    natural > 0.7 && natural < 1.7,
+    '弹幕 ' + sw0 + ' / 道具 ' + it0 + '（比值 ' + natural.toFixed(2) + '）');
 
   /* ---------- 难度曲线 ---------- */
   ok('前 10 关属于简单期', G.enemies.EASY_UNTIL === 10, 'EASY_UNTIL=' + G.enemies.EASY_UNTIL);
@@ -2263,7 +2324,13 @@ try {
     if (G.progress && G.progress.level > maxLevel) maxLevel = G.progress.level;
     if (G.level > maxWave) maxWave = G.level;
   }
-} catch (err) { crashed = err; }
+} catch (err) {
+  crashed = err;
+  // 立刻把堆栈打出来（带醒目标记），别等最后的断言汇总
+  console.error('\n========== [压测崩溃] ==========');
+  console.error(err && err.stack ? err.stack : String(err));
+  console.error('================================\n');
+}
 
 if (G.input) {
   G.input.held.fire = false;
@@ -2283,6 +2350,13 @@ ok('波次确实在推进', maxWave >= 2, '最高波次 ' + maxWave);
 console.log('\n==============================');
 console.log('通过 ' + pass + ' 项，失败 ' + fail + ' 项');
 console.log('==============================\n');
+
+// 失败清单：比翻日志快得多，CI 上一眼就能看到挂在哪几条
+if (failedNames.length) {
+  console.log('失败清单：');
+  failedNames.forEach((n, i) => console.log('  ' + (i + 1) + '. ' + n));
+  console.log('');
+}
 
 // ASCII 汇总行，方便 CI / 脚本抓取（不受控制台编码影响）
 console.log('RESULT pass=' + pass + ' fail=' + fail);

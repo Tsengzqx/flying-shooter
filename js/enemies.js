@@ -384,6 +384,7 @@
 
     for (let i = list.length - 1; i >= 0; i--) {
       const e = list[i];
+      if (!e) { list.splice(i, 1); continue; }   // 防御：清掉空槽，别让一帧异常把游戏打崩
       e.t += dt;
       e.stateT += dt;
       if (e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - dt * 5);

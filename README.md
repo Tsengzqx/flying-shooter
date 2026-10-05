@@ -1,6 +1,6 @@
 # 星际突袭 · STAR STRIKE
 
-[![Netlify Status](https://api.netlify.com/api/v1/badges/9ab0eeee-5f9c-4ce3-aab3-2b02620ceed5/deploy-status)](https://elaborate-mandazi-62d152.netlify.app/)
+[![Netlify Status](https://api.netlify.com/api/v1/badges/59ab0eee-5f9c-4ce3-aab3-2b02620ceed5/deploy-status)](https://elaborate-mandazi-62d152.netlify.app/)
 [![tests](https://github.com/Tsengzqx/flying-shooter/actions/workflows/tests.yml/badge.svg)](https://github.com/Tsengzqx/flying-shooter/actions/workflows/tests.yml)
 
 一个用原生 HTML5 + Canvas 写的竖版飞行射击小游戏，带 **经验升级驱动的 Roguelike 三选一强化**、**三大流派构筑**、**金色品质增益** 和 **Boss 战**。

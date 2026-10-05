@@ -127,12 +127,14 @@
 
     for (let i = list.length - 1; i >= 0; i--) {
       const b = list[i];
+      if (!b) { list.splice(i, 1); continue; }   // 防御：清掉空槽，别让一帧异常把游戏打崩
 
       /* ---- 追踪弹头 ---- */
       if (b.homing > 0 && homingTargets && homingTargets.length) {
         let best = null;
         let bestD = Infinity;
         for (const e of homingTargets) {
+          if (!e) continue;
           const d = (e.x - b.x) * (e.x - b.x) + (e.y - b.y) * (e.y - b.y);
           if (d < bestD) { bestD = d; best = e; }
         }
