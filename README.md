@@ -1,7 +1,14 @@
 # 星际突袭 · STAR STRIKE
 
+[![Netlify Status](https://api.netlify.com/api/v1/badges/9ab0eeee-5f9c-4ce3-aab3-2b02620ceed5/deploy-status)](https://elaborate-mandazi-62d152.netlify.app/)
+[![tests](https://github.com/Tsengzqx/flying-shooter/actions/workflows/tests.yml/badge.svg)](https://github.com/Tsengzqx/flying-shooter/actions/workflows/tests.yml)
+
 一个用原生 HTML5 + Canvas 写的竖版飞行射击小游戏，带 **经验升级驱动的 Roguelike 三选一强化**、**三大流派构筑**、**金色品质增益** 和 **Boss 战**。
 零依赖、零构建、零外部素材 —— 双击 `index.html` 就能玩。
+
+## 🎮 [**点这里直接玩 →**](https://elaborate-mandazi-62d152.netlify.app/)
+
+> 手机也能玩：手指按住屏幕拖动 = 移动，自动开火。
 
 ---
 
@@ -297,11 +304,14 @@ node tools/build.js
 ### 方式 B：发源码压缩包
 
 `dist/flying-shooter-source.zip`（约 70 KB）包含 `index.html` + `css/` + `js/` + `README.md`。
-对方解压后双击 `index.html` 即可 
+对方解压后双击 `index.html` 即可 —— **不需要 `npm install`，不需要起服务器**。
 
-### 方式 C：给一个网址（手机用户最方便）
+### 方式 C：直接给网址（手机用户最方便）
 
-[星际突袭 · 飞行射击](https://elaborate-mandazi-62d152.netlify.app/)
+**线上站点：<https://elaborate-mandazi-62d152.netlify.app/>**
+
+已通过 **Netlify** 托管，并连接了本 GitHub 仓库 —— 每次 `push` 到 `main` 都会自动重新部署，不需要手动上传。
+根目录的 `netlify.toml` 已声明「纯静态、无需构建」，Netlify 会自动读取。
 
 ### 方式 D：同一个局域网直接分享
 
