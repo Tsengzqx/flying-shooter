@@ -125,11 +125,13 @@
     if (!B || !B.spawnPlayer) return;
 
     const n = 8 + 4 * (S.ringShot || 1);
-    const spd = 520 * (S.bulletSpeedMul || 1);
+    const spd = 520 * (S.bulletSpeedMul || 1) * (S.homingSpeedMul || 1);
     const opt = {
       r: 3.6 * (S.bulletSizeMul || 1),
       damage: (S.damage || 1) * 0.7,
       pierce: 0,
+      homing: S.homingTurn || 0,
+      homingCone: S.homingCone,
     };
 
     for (let i = 0; i < n; i++) {
@@ -172,7 +174,7 @@
     const B = G.bullets;
     if (!B || !B.spawnPlayer) return;
 
-    const spd = 760 * (S.bulletSpeedMul || 1);
+    const spd = 760 * (S.bulletSpeedMul || 1) * (S.homingSpeedMul || 1);
     const style = S.bulletStyle || 'normal';
     const elems = S.bulletElements;
 
@@ -181,7 +183,8 @@
       r: 4 * (S.bulletSizeMul || 1),
       damage: (S.damage || 1) * (power || 1),
       pierce: S.pierce || 0,
-      homing: S.homing || 0,
+      homing: S.homingTurn || 0,
+      homingCone: S.homingCone,
       ricochet: S.bulletRicochet || 0,
       style: style,
       elems: elems,

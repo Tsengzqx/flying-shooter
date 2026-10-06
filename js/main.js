@@ -182,7 +182,10 @@ Game.stats = {
   critMul: 2,
   rearGun: 0,
   sideGun: 0,
-  homing: 0,
+  homing: 0,             // 追踪弹头：层数
+  homingTurn: 0,         // 追踪转向率（弧度/秒）—— 决定追踪有多"黏"
+  homingCone: 1.2566,    // 追踪索敌锥形半角（±72°），锥形外不追
+  homingSpeedMul: 1,     // 追踪的代价：弹速系数
   bulletWave: 0,         // 波动弹：飞行中左右摆动
   bulletRicochet: 0,     // 弹跳弹：撞到屏幕两侧反弹
   ringShot: 0,           // 相位环射：定期打出一圈弹幕

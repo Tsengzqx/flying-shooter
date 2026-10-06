@@ -129,13 +129,16 @@
     wave.gap = 0;
     G.level = level;
 
-    // 每 5 关一个 Boss（同时也会有护卫小怪一起出）
-    if (level % 5 === 0 && G.boss && typeof G.boss.start === 'function') {
-      wave.banner = { text: '第 ' + level + ' 关 · BOSS 来袭', t: 2.2 };
-      G.boss.start(level);
+    // 每 10 关一个 Boss（同时也会有护卫小怪一起出）
+    if (level % 10 === 0 && G.boss && typeof G.boss.start === 'function') {
+      const bossName = G.boss.start(level);
+      wave.banner = {
+        text: '第 ' + level + ' 关 · ' + (bossName || 'BOSS') + ' 来袭',
+        t: 2.6,
+      };
 
       const minions = Math.min(5 + Math.floor(level / 2), 18);
-      let mt = 3.0;
+      let mt = 3.4;
       for (let i = 0; i < minions; i++) {
         wave.queue.push({
           delay: mt,

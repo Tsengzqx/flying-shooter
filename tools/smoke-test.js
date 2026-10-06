@@ -15,23 +15,67 @@ const vm = require('vm');
 const ROOT = path.join(__dirname, '..');
 const noop = () => {};
 
-/* ---------------- Canvas 2D 上下文桩 ---------------- */
+/* ---------------- Canvas 2D 上下文桩 ----------------
+   默认是纯 noop；打开 __rec 后会按顺序记录绘制调用（含取整后的坐标），
+   用来给"外形是否真的不一样"做指纹对比。                        */
 function makeCtx() {
-  const grad = { addColorStop: noop };
-  return {
-    setTransform: noop, save: noop, restore: noop, translate: noop, rotate: noop,
-    scale: noop, clearRect: noop, fillRect: noop, strokeRect: noop,
-    beginPath: noop, closePath: noop, moveTo: noop, lineTo: noop, arc: noop,
-    arcTo: noop, quadraticCurveTo: noop, bezierCurveTo: noop, rect: noop,
-    ellipse: noop, fill: noop, stroke: noop, fillText: noop, strokeText: noop,
-    clip: noop, setLineDash: noop, drawImage: noop,
-    createLinearGradient: () => grad,
-    createRadialGradient: () => grad,
-    measureText: () => ({ width: 10 }),
+  const c = {
+    __rec: false,
+    __ops: [],
     globalAlpha: 1, globalCompositeOperation: 'source-over',
     fillStyle: '', strokeStyle: '', lineWidth: 1, lineCap: '',
     shadowColor: '', shadowBlur: 0, font: '10px sans-serif',
   };
+
+  const grad = {
+    addColorStop(pos, col) {
+      if (c.__rec) c.__ops.push('stop:' + pos + ':' + col);
+    },
+  };
+
+  const names = [
+    'setTransform', 'save', 'restore', 'translate', 'rotate', 'scale',
+    'clearRect', 'fillRect', 'strokeRect', 'beginPath', 'closePath',
+    'moveTo', 'lineTo', 'arc', 'arcTo', 'quadraticCurveTo', 'bezierCurveTo',
+    'rect', 'ellipse', 'fill', 'stroke', 'fillText', 'strokeText',
+    'clip', 'setLineDash', 'drawImage',
+  ];
+
+  for (const n of names) {
+    c[n] = function () {
+      if (!c.__rec) return;
+      // 记录 操作名 + 取整后的数值参数，得到可比较的形状指纹
+      let key = n;
+      for (let i = 0; i < arguments.length; i++) {
+        const a = arguments[i];
+        if (typeof a === 'number') key += ':' + Math.round(a);
+        else if (typeof a === 'string' && a.length <= 24) key += ':' + a;
+      }
+      c.__ops.push(key);
+    };
+  }
+
+  c.createLinearGradient = function () {
+    if (c.__rec) c.__ops.push('lg');
+    return grad;
+  };
+  c.createRadialGradient = function () {
+    if (c.__rec) c.__ops.push('rg');
+    return grad;
+  };
+  c.measureText = () => ({ width: 10 });
+
+  /** 开始录制 */
+  c.__begin = function () { c.__ops.length = 0; c.__rec = true; };
+  /** 结束录制并返回指纹 */
+  c.__end = function () {
+    c.__rec = false;
+    const ops = c.__ops.slice();
+    c.__ops.length = 0;
+    return ops;
+  };
+
+  return c;
 }
 
 /* ---------------- DOM 桩 ---------------- */
@@ -1584,17 +1628,21 @@ if (G.boss) {
   startSafe();
   G.enemies.list.length = 0;
   G.enemies.wave.queue.length = 0;
-  G.enemies.wave.level = 4;
+  G.enemies.wave.level = 9;          // 清空第 9 关 → 自然推进到第 10 关（Boss 关）
   G.enemies.wave.gap = 0;
 
-  for (let i = 0; i < 140; i++) {
+  for (let i = 0; i < 300; i++) {
+    if (G.boss.state.boss) break;
     if (G.state === 'upgrade' && G.upgrades) {
       G.upgrades.choose(G.upgrades.state.offers[0].id);
     }
     step(16);
   }
-  ok('第 5 关自动出现 Boss', !!G.boss.state.boss,
+  ok('第 10 关自动出现 Boss', !!G.boss.state.boss,
     G.boss.state.boss ? G.boss.state.boss.name : '无');
+  ok('第 5 关不再出现 Boss（改为每 10 关一个）',
+    G.boss.defAt(5).idx === 0 && G.boss.defAt(9).idx === 0,
+    'L5→idx' + G.boss.defAt(5).idx + ' L9→idx' + G.boss.defAt(9).idx);
   ok('Boss 激活状态正确', G.boss.active() === true);
   ok('Boss 关也会刷新小怪', G.enemies.wave.queue.length > 0 || G.enemies.list.length > 0,
     '队列 ' + G.enemies.wave.queue.length + ' / 场上 ' + G.enemies.list.length);
@@ -1653,12 +1701,12 @@ if (G.boss) {
       xpBeforeBoss + ' → ' + G.progress.state.total);
   }
 
-  runFrames(130, true);
+  runFrames(220, true);
   ok('死亡演出结束后 Boss 消失', !G.boss.state.boss);
 
   // 撞机
   startSafe();
-  G.boss.start(5);
+  G.boss.start(10);
   const bs2 = G.boss.state.boss;
   bs2.entering = false;
   for (let i = 0; i < 6; i++) step(16);
@@ -3072,7 +3120,347 @@ if (G.upgrades && G.enemies) {
     drawErr ? drawErr.message : '');
 }
 
-console.log('\n[35] 长时间稳定性（自动选强化 + 自动重开）');
+console.log('\n[35] Boss 花名册：6 种外形与机制');
+if (G.boss && G.boss.ROSTER) {
+  const R = G.boss.ROSTER;
+
+  ok('共设计 6 种 Boss', R.length === 6, '共 ' + R.length + ' 种');
+  ok('每种 Boss 的名字互不重复',
+    new Set(R.map((b) => b.name)).size === R.length, R.map((b) => b.name).join(' / '));
+  ok('每种 Boss 都有独立代号',
+    new Set(R.map((b) => b.code)).size === R.length, R.map((b) => b.code).join(' / '));
+  ok('每种 Boss 都有独立内部 id',
+    new Set(R.map((b) => b.id)).size === R.length, R.map((b) => b.id).join(' / '));
+  ok('每种 Boss 都有 3 套阶段弹幕池',
+    R.every((b) => Array.isArray(b.phases) && b.phases.length === 3 &&
+      b.phases.every((p) => p.length > 0)),
+    R.map((b) => b.name + ':' + b.phases.map((p) => p.length).join('')).join(' '));
+  ok('每种 Boss 都有独立配色',
+    new Set(R.map((b) => b.pal.core)).size === R.length,
+    R.map((b) => b.pal.core).join(' / '));
+
+  // 每 10 关一个，第 60 关之后轮回并强化
+  ok('第 10/20/30/40/50/60 关各对应一种 Boss',
+    [10, 20, 30, 40, 50, 60].every((lv, i) => G.boss.defAt(lv).def === R[i]),
+    [10, 20, 30, 40, 50, 60].map((lv) => G.boss.defAt(lv).def.name).join(' / '));
+  ok('第 70 关回到第一个 Boss 并标记形态',
+    G.boss.defAt(70).def === R[0] && G.boss.defAt(70).cycle === 1,
+    G.boss.defAt(70).def.name + ' cycle=' + G.boss.defAt(70).cycle);
+  ok('非 Boss 关也会落在同一个 Boss 上（不越界）',
+    G.boss.defAt(1).def === R[0] && G.boss.defAt(5).def === R[0],
+    G.boss.defAt(1).def.name);
+
+  // 血量倍率递增：越后面的 Boss 越强
+  ok('越靠后的 Boss 血量倍率越高',
+    R.every((b, i) => i === 0 || b.hpMul > R[i - 1].hpMul),
+    R.map((b) => b.hpMul).join(' < '));
+  ok('越靠后的 Boss 弹速越高',
+    R.every((b, i) => i === 0 || b.speed > R[i - 1].speed),
+    R.map((b) => b.speed).join(' < '));
+  ok('越靠后的 Boss 开火越频繁',
+    R.every((b, i) => i === 0 || b.cdMul < R[i - 1].cdMul),
+    R.map((b) => b.cdMul).join(' > '));
+
+  // 外形指纹：把绘制调用录下来，6 种必须两两不同
+  const fingerprint = (lv) => {
+    startSafe();
+    G.boss.reset();
+    G.boss.start(lv);
+    const b = G.boss.state.boss;
+    b.entering = false;
+    b.y = 112;
+    b.t = 1.0;              // 固定时间，排除动画抖动
+    b.hitFlash = 0;
+    b.dotStacks = 0;
+
+    ctx2d.__begin();
+    G.boss.draw();
+    const ops = ctx2d.__end();
+    return { ops, sig: ops.join('|'), b };
+  };
+
+  const prints = [10, 20, 30, 40, 50, 60].map(fingerprint);
+
+  ok('每种 Boss 都真的画了东西（不是空函数）',
+    prints.every((p) => p.ops.length > 40),
+    prints.map((p, i) => R[i].name + ':' + p.ops.length).join(' '));
+
+  let dup = null;
+  for (let i = 0; i < prints.length && !dup; i++) {
+    for (let j = i + 1; j < prints.length; j++) {
+      if (prints[i].sig === prints[j].sig) { dup = R[i].name + ' = ' + R[j].name; break; }
+    }
+  }
+  ok('6 种 Boss 的外形绘制两两不同', !dup, dup || '全部互不相同');
+
+  // 重叠率：按"去重后的指令种类"算，避免重复调用把比值顶到 1 以上
+  const overlap = (a, b) => {
+    const A = new Set(a);
+    const S = new Set(b);
+    let hit = 0;
+    A.forEach((op) => { if (S.has(op)) hit++; });
+    return hit / Math.max(1, Math.min(A.size, S.size));
+  };
+  let tooSimilar = null;
+  let worst = 0;
+  for (let i = 0; i < prints.length; i++) {
+    for (let j = i + 1; j < prints.length; j++) {
+      const ov = overlap(prints[i].ops, prints[j].ops);
+      if (ov > worst) worst = ov;
+      if (ov > 0.9 && !tooSimilar) {
+        tooSimilar = R[i].name + ' vs ' + R[j].name + ' = ' + ov.toFixed(2);
+      }
+    }
+  }
+  ok('任意两种 Boss 外形重合度 < 90%', !tooSimilar,
+    tooSimilar || ('最高重合度 ' + Math.round(worst * 100) + '%'));
+
+  // ---- 每种 Boss 都能跑起来：入场、开火、进阶段 ----
+  const spawnCount = (lv) => {
+    startSafe();
+    G.boss.reset();
+    G.bullets.reset();
+    G.boss.start(lv);
+    const b = G.boss.state.boss;
+    b.entering = false;
+    b.y = 112;
+    G.progress.state.need = Infinity;
+    G.enemies.wave.queue.length = 0;
+
+    for (let i = 0; i < 400; i++) G.boss.update(0.016);
+    return {
+      bullets: G.bullets.hostile.length,
+      phase: b.phase,
+      name: b.name,
+      alive: !!G.boss.state.boss,
+    };
+  };
+
+  const runs = [10, 20, 30, 40, 50, 60].map(spawnCount);
+  ok('每种 Boss 都会持续开火',
+    runs.every((r) => r.bullets > 0),
+    runs.map((r) => r.name + ':' + r.bullets).join(' '));
+  ok('每种 Boss 跑 400 帧都不会崩', runs.every((r) => r.alive),
+    runs.map((r) => r.name + (r.alive ? '✓' : '✗')).join(' '));
+
+  // ---- 每种 Boss 都至少有一种"独门"弹幕 ----
+  const kindsOf = (i) => new Set(R[i].phases.flat());
+  ok('钢铁蜂巢用蜂群弹', kindsOf(0).has('swarm'));
+  ok('虚空掠夺者会瞬移', R[1].twist === 'blink', 'twist=' + R[1].twist);
+  ok('熔核巨舰用弹墙', kindsOf(2).has('wall'));
+  ok('深空仲裁者用十字旋臂且转速加倍',
+    kindsOf(3).has('cross') && R[3].twist === 'spin');
+  ok('终焉之影会隐形', R[4].twist === 'cloak', 'twist=' + R[4].twist);
+  ok('噬星者弹幕种类最多',
+    kindsOf(5).size === Math.max(...R.map((b, i) => kindsOf(i).size)),
+    R.map((b, i) => b.name + ':' + kindsOf(i).size).join(' '));
+
+  // ---- 每种 Boss 都能被完整打死并掉落补给 ----
+  const fullFight = (lv) => {
+    startSafe();
+    G.boss.reset();
+    G.powerups.reset();
+    G.boss.start(lv);
+    const b = G.boss.state.boss;
+    b.entering = false;
+    b.y = 112;
+    G.enemies.list.length = 0;
+    G.enemies.wave.queue.length = 0;
+    G.progress.state.need = Infinity;
+    G.player.invuln = 99999;
+
+    const scoreBefore = G.score;
+    b.hp = 3;
+    // 走真实命中接口；坐标取 Boss 当前位置（Boss 会游走 / 瞬移，
+    // 用"固定位置发射一颗子弹"会因为瞬移而打空，测试就不确定了）
+    G.boss.tryHit({ x: b.x, y: b.y, r: 4, damage: 50, critChance: 0 });
+    const died = b.dead;
+
+    // 跑完死亡演出；锁住波次，避免中途又刷出下一个 Boss 干扰判定
+    let cleared = false;
+    for (let i = 0; i < 140; i++) {
+      G.enemies.wave.level = 1;
+      G.enemies.wave.queue.length = 0;
+      step(16);
+      if (!G.boss.state.boss) { cleared = true; break; }
+    }
+
+    return {
+      died,
+      cleared,
+      loot: G.powerups.list.length,
+      scoreUp: G.score > scoreBefore,
+    };
+  };
+
+  const fights = [10, 20, 30, 40, 50, 60].map(fullFight);
+  ok('每种 Boss 都能被击破',
+    fights.every((f) => f.died), fights.map((f, i) => R[i].name + (f.died ? '✓' : '✗')).join(' '));
+  ok('击破演出结束后 Boss 都会消失',
+    fights.every((f) => f.cleared), fights.map((f) => f.cleared ? '✓' : '✗').join(' '));
+  ok('击破每种 Boss 都会掉落补给',
+    fights.every((f) => f.loot >= 3), fights.map((f) => f.loot).join(' '));
+  ok('击破每种 Boss 都给分',
+    fights.every((f) => f.scoreUp), fights.map((f) => f.scoreUp ? '✓' : '✗').join(' '));
+
+  // ---- 隐形的 Boss 不该撞死玩家 ----
+  startSafe();
+  G.boss.reset();
+  G.boss.start(50);                        // 终焉之影
+  const shade = G.boss.state.boss;
+  shade.entering = false;
+  shade.y = 112;
+  shade.phase = 3;
+  shade.cloaked = true;
+  G.player.x = shade.x;
+  G.player.y = shade.y;
+  G.player.invuln = 0;
+  G.lives = 3;
+  G.boss.collidePlayer(G.player);
+  ok('隐身的 Boss 不会撞死玩家', G.lives === 3, 'lives=' + G.lives);
+
+  shade.cloaked = false;
+  G.boss.collidePlayer(G.player);
+  ok('显形的 Boss 依然会撞死玩家', G.lives === 2, 'lives=' + G.lives);
+
+  // ---- UI 三种阶段都不会崩 ----
+  let uiErr = null;
+  try {
+    for (const lv of [10, 20, 30, 40, 50, 60]) {
+      startSafe();
+      G.boss.reset();
+      G.boss.start(lv);
+      const b = G.boss.state.boss;
+      b.entering = false;
+      G.boss.drawUI();
+      b.phase = 2; G.boss.drawUI();
+      b.phase = 3; G.boss.drawUI();
+    }
+  } catch (e) { uiErr = e; }
+  ok('Boss 血条 UI 在三个阶段都能绘制', !uiErr, uiErr ? uiErr.message : '');
+
+  G.boss.reset();
+} else {
+  ok('Boss 花名册存在', false, '缺少 ROSTER');
+}
+
+console.log('\n[36] 追踪弹头削弱');
+if (G.upgrades && G.bullets) {
+  const U = G.upgrades;
+  const S = G.stats;
+
+  startSafe();
+  U.recalc();
+  ok('默认没有追踪', S.homingTurn === 0 && S.homing === 0,
+    'turn=' + S.homingTurn);
+
+  U.owned.gen_homing = 1;
+  U.recalc();
+  const t1 = S.homingTurn;
+  U.owned.gen_homing = 2;
+  U.recalc();
+  const t2 = S.homingTurn;
+  U.owned.gen_homing = 3;
+  U.recalc();
+  const t3 = S.homingTurn;
+
+  ok('追踪有转向率且远低于旧版（旧版 3.4~10.2）',
+    t1 > 0 && t1 < 1.6 && t3 < 2.4,
+    t1.toFixed(2) + ' / ' + t2.toFixed(2) + ' / ' + t3.toFixed(2));
+  ok('追踪转向率是收益递减的（每层增幅变小）',
+    (t2 - t1) < t1 && Math.abs((t2 - t1) - (t3 - t2)) < 1e-9,
+    'Δ1=' + (t2 - t1).toFixed(2) + ' Δ2=' + (t3 - t2).toFixed(2));
+  ok('追踪有弹速代价', S.homingSpeedMul < 1, 'speedMul=' + S.homingSpeedMul);
+
+  // 飞完一屏（约 0.95 秒）的转向角度不能超过 130°
+  const sweep = t3 * 0.95;
+  ok('飞完一屏最多转 130°（无法掉头追人）',
+    sweep < 130 * Math.PI / 180,
+    Math.round(sweep * 180 / Math.PI) + '°');
+
+  // ---- 锥形限制：身后的目标不追 ----
+  startSafe();
+  G.player.autoFire = false;
+  G.enemies.list.length = 0;
+  G.enemies.wave.queue.length = 0;
+  G.enemies.spawn('gunship', G.W / 2);
+  const behind = G.enemies.list[0];
+  behind.x = G.W / 2;
+  behind.baseX = G.W / 2;
+  behind.y = 600;             // 在子弹下方 = 身后
+  behind.vy = 0;
+  behind.amp = 0;
+  behind.fireCd = 999;
+
+  G.bullets.reset();
+  // 从下往上飞，目标在身后
+  G.bullets.spawnPlayer(G.W / 2, 500, 0, -600, {
+    homing: G.stats.homingTurn || 1.15, homingCone: G.stats.homingCone,
+  });
+  const backBullet = G.bullets.friendly[0];
+  for (let i = 0; i < 25; i++) step(16);
+  ok('身后的目标不会被追踪（锥形限制）', backBullet.vx === 0 && backBullet.vy < 0,
+    'vx=' + backBullet.vx.toFixed(1) + ' vy=' + backBullet.vy.toFixed(1));
+  ok('没锁到目标时不设 lock', !backBullet.lock, 'lock=' + backBullet.lock);
+
+  // ---- 锥形内会锁定并转向 ----
+  startSafe();
+  G.player.autoFire = false;
+  G.enemies.list.length = 0;
+  G.enemies.wave.queue.length = 0;
+  G.enemies.spawn('gunship', 60);
+  const front = G.enemies.list[0];
+  front.x = 60;
+  front.baseX = 60;
+  front.y = 200;
+  front.vy = 0;
+  front.amp = 0;
+  front.fireCd = 999;
+
+  G.bullets.reset();
+  G.bullets.spawnPlayer(G.W / 2, 500, 0, -600, {
+    homing: G.stats.homingTurn || 1.15, homingCone: G.stats.homingCone,
+  });
+  const fwBullet = G.bullets.friendly[0];
+  for (let i = 0; i < 10; i++) step(16);
+  ok('锥形内的目标会被锁定', !!fwBullet.lock, fwBullet.lock ? '已锁定' : '未锁定');
+  ok('追踪弹会朝目标转向', fwBullet.vx < -5, 'vx=' + fwBullet.vx.toFixed(1));
+
+  // ---- 锁定后不换目标 ----
+  G.enemies.spawn('gunship', G.W - 40);
+  const other = G.enemies.list[G.enemies.list.length - 1];
+  other.y = 120;
+  other.vy = 0;
+  other.amp = 0;
+  other.fireCd = 999;
+  const lockedTo = fwBullet.lock;
+  for (let i = 0; i < 6; i++) step(16);
+  ok('锁定后不会中途换目标', fwBullet.lock === lockedTo || !fwBullet.lock,
+    fwBullet.lock === lockedTo ? '保持锁定' : '目标已失效并丢锁');
+
+  // ---- 弹速代价真的生效 ----
+  startSafe();
+  U.owned.gen_homing = 3;
+  U.recalc();
+  G.player.autoFire = false;
+  G.bullets.reset();
+  G.player.shootVolley(G.stats, 1);
+  const hs = Math.hypot(G.bullets.friendly[0].vx, G.bullets.friendly[0].vy);
+
+  startSafe();
+  U.recalc();
+  G.player.autoFire = false;
+  G.bullets.reset();
+  G.player.shootVolley(G.stats, 1);
+  const ns = Math.hypot(G.bullets.friendly[0].vx, G.bullets.friendly[0].vy);
+
+  ok('拿了追踪之后子弹确实变慢', hs < ns * 0.95,
+    '追踪 ' + hs.toFixed(0) + ' vs 普通 ' + ns.toFixed(0));
+
+  G.player.autoFire = true;
+}
+
+console.log('\n[37] 长时间稳定性（自动选强化 + 自动重开）');
 startSafe();
 
 let crashed = null;

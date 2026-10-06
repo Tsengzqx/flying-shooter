@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>星际突袭 · Boss 图鉴</title>
+<style>
+  :root {
+    --bg: #05070f;
+    --card: #0b1120;
+    --line: rgba(120, 190, 255, .20);
+    --dim: #7fa8cc;
+    --txt: #dcefff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: radial-gradient(1200px 600px at 50% -10%, #12203a 0%, var(--bg) 60%);
+    color: var(--txt);
+    font: 14px/1.6 "Segoe UI", "Microsoft YaHei", sans-serif;
+    padding: 24px 20px 60px;
+  }
+  h1 { font-size: 22px; letter-spacing: 3px; margin: 0 0 4px; }
+  h1 span { color: #ffc46b; }
+  .sub { color: var(--dim); font-size: 12px; margin-bottom: 18px; }
+  .bar {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    margin-bottom: 20px; padding-bottom: 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  button {
+    background: #16233a; color: var(--txt); border: 1px solid var(--line);
+    border-radius: 6px; padding: 6px 14px; cursor: pointer; font: inherit; font-size: 12px;
+  }
+  button:hover { background: #1e3050; }
+  button.on { background: #2a6bd6; border-color: #5aa0ff; }
+  .note { color: var(--dim); font-size: 12px; margin-left: auto; }
+
+  .grid {
+    display: grid; gap: 16px;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  }
+  .card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 10px; overflow: hidden;
+  }
+  .card canvas { display: block; width: 100%; height: auto; background: #04060d; }
+  .meta { padding: 10px 12px 12px; }
+  .name { font-size: 15px; font-weight: 700; letter-spacing: 1px; }
+  .code { font-size: 10px; color: var(--dim); letter-spacing: 2px; margin-bottom: 6px; }
+  .title { font-size: 12px; color: #a9c6e4; margin-bottom: 8px; }
+  .stats { font-size: 11px; color: var(--dim); display: flex; flex-wrap: wrap; gap: 4px 12px; }
+  .stats b { color: var(--txt); font-weight: 600; }
+  .pips { display: flex; gap: 4px; margin-top: 8px; flex-wrap: wrap; }
+  .pip {
+    font-size: 10px; padding: 1px 7px; border-radius: 99px;
+    border: 1px solid var(--line); color: var(--dim);
+  }
+  .pip.key { border-color: rgba(255,196,107,.6); color: #ffc46b; }
+  .uirow { margin-top: 26px; }
+  .uirow h2 { font-size: 13px; color: var(--dim); font-weight: 600; letter-spacing: 2px; margin: 0 0 10px; }
+  .uirow canvas { display: block; width: 480px; max-width: 100%; height: 52px; background: #04060d; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 8px; }
+  #game-wrap { position: absolute; left: -9999px; top: 0; }
+</style>
+</head>
+<body>
+
+<!-- main.js 需要这些元素才能正常初始化（藏在屏幕外） -->
+<div id="game-wrap"><canvas id="game" width="480" height="800"></canvas></div>
+
+<h1>星际突袭 · <span>Boss 图鉴</span></h1>
+<div class="sub">每 10 关一位 · 共 6 位 · 第 60 关后轮回并强化（第 N 形态）</div>
+
+<div class="bar">
+  <span style="color:var(--dim);font-size:12px">阶段</span>
+  <button data-phase="1" class="on">Ⅰ 满血</button>
+  <button data-phase="2">Ⅱ 中段</button>
+  <button data-phase="3">Ⅲ 濒死</button>
+  <button id="pause">⏸ 暂停动画</button>
+  <span class="note">直接双击本文件即可打开 · 用的是游戏真实的绘制代码</span>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<div class="uirow">
+  <h2>顶部血条与配色</h2>
+  <div id="uis"></div>
+</div>
+
+<!-- 按 index.html 的顺序加载，缺谁都不会报错 -->
+<script src="../js/main.js"></script>
+<script src="../js/audio.js"></script>
+<script src="../js/input.js"></script>
+<script src="../js/bullets.js"></script>
+<script src="../js/player.js"></script>
+<script src="../js/enemies.js"></script>
+<script src="../js/boss.js"></script>
+<script src="../js/combat.js"></script>
+<script src="../js/particles.js"></script>
+<script src="../js/powerups.js"></script>
+<script src="../js/progress.js"></script>
+<script src="../js/upgrades.js"></script>
+<script src="../js/panel.js"></script>
+
+<script>
+/* ============================================================
+   Boss 图鉴
+   ------------------------------------------------------------
+   直接调用游戏里的 G.boss.draw() / drawUI()，所以看到的就是
+   实战里的样子，不存在"预览和游戏不一致"的问题。
+   ============================================================ */
+(function () {
+  const G = window.Game;
+  if (!G || !G.boss || !G.boss.ROSTER) {
+    document.body.insertAdjacentHTML('afterbegin',
+      '<p style="color:#ff6b6b">boss.js 没加载成功，请确认 js/ 目录和本文件相对位置正确。</p>');
+    return;
+  }
+
+  // 停掉战斗更新，但保留我们自己的绘制
+  G.state = 'paused';
+  G.player && (G.player.autoFire = false);
+
+  const ROSTER = G.boss.ROSTER;
+  const CW = 460;                 // 每个卡片的画布宽度
+  const CH = 300;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+
+  /* ---------- 预先构造 6 个 Boss 快照 ----------
+     start() 会触发音效与屏幕震动，所以只在初始化时调一次，
+     之后每帧直接复用这些对象。                            */
+  const snaps = ROSTER.map((def, i) => {
+    const warn = G.audio && G.audio.bossWarn;
+    const shake = G.shake && G.shake.add;
+    if (G.audio) G.audio.bossWarn = function () {};
+    if (G.shake) G.shake.add = function () {};
+
+    G.boss.reset();
+    G.boss.start((i + 1) * 10);
+    const b = G.boss.state.boss;
+    b.entering = false;
+    b.y = 112;
+    b.t = 0;
+    b.hitFlash = 0;
+    b.dotStacks = 0;
+    b.alpha = 1;
+    b.phase = 1;
+
+    if (G.audio && warn) G.audio.bossWarn = warn;
+    if (G.shake && shake) G.shake.add = shake;
+    return b;
+  });
+  G.boss.reset();
+
+  /* ---------- 建卡片 ---------- */
+  const grid = document.getElementById('grid');
+  const slots = [];
+
+  ROSTER.map(function (def, i) {
+    const card = document.createElement('div');
+    card.className = 'card';
+
+    const cv = document.createElement('canvas');
+    cv.width = CW * dpr;
+    cv.height = CH * dpr;
+    cv.style.aspectRatio = CW + ' / ' + CH;
+    card.appendChild(cv);
+
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+
+    const kinds = [];
+    def.phases.forEach(function (p) {
+      p.forEach(function (k) { if (kinds.indexOf(k) < 0) kinds.push(k); });
+    });
+    const TWIST = {
+      blink: '瞬移', cloak: '隐形', spin: '双倍转速', swarm: '疯狂召唤', none: '—',
+    };
+
+    meta.innerHTML =
+      '<div class="name">' + def.name + '</div>' +
+      '<div class="code">' + def.code + '　·　第 ' + ((i + 1) * 10) + ' 关</div>' +
+      '<div class="title">' + def.title + '</div>' +
+      '<div class="stats">' +
+        '<span>血量倍率 <b>×' + def.hpMul.toFixed(2) + '</b></span>' +
+        '<span>体型 <b>' + def.r + '</b></span>' +
+        '<span>弹速 <b>' + def.speed + '</b></span>' +
+        '<span>开火间隔 <b>×' + def.cdMul.toFixed(2) + '</b></span>' +
+        '<span>机制 <b>' + (TWIST[def.twist] || def.twist) + '</b></span>' +
+      '</div>' +
+      '<div class="pips">' +
+        def.phases.map(function (p, pi) {
+          return '<span class="pip">' + ['Ⅰ', 'Ⅱ', 'Ⅲ'][pi] + ' ' + p.join('/') + '</span>';
+        }).join('') +
+      '</div>';
+
+    card.appendChild(meta);
+    grid.appendChild(card);
+
+    slots.push({ cv: cv, ctx: cv.getContext('2d'), def: def, i: i });
+  });
+
+  /* ---------- 血条预览 ---------- */
+  const uis = document.getElementById('uis');
+  const uiSlots = ROSTER.map(function (def, i) {
+    const cv = document.createElement('canvas');
+    cv.width = 480 * dpr;
+    cv.height = 52 * dpr;
+    cv.style.width = '480px';
+    cv.style.height = '52px';
+    uis.appendChild(cv);
+    return { cv: cv, ctx: cv.getContext('2d') };
+  });
+
+  /* ---------- 绘制循环 ---------- */
+  let phase = 1;
+  let paused = false;
+  let t = 0;
+
+  function drawSlot(slot, boss) {
+    const ctx = slot.ctx;
+    const real = G.ctx;
+
+    // 时间/阶段同步
+    boss.t = t;
+    boss.phase = phase;
+
+    // 塞进 state 里，draw() 从 state.boss 取对象
+    G.boss.state.boss = boss;
+    G.ctx = ctx;
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, CW, CH);
+
+    // 背景网格，方便看清轮廓
+    ctx.save();
+    ctx.strokeStyle = 'rgba(90,140,200,0.10)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x <= CW; x += 40) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, CH); ctx.stroke();
+    }
+    for (let y = 0; y <= CH; y += 40) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(CW, y); ctx.stroke();
+    }
+    ctx.restore();
+
+    // 放大到 1.5 倍便于观察细节
+    ctx.save();
+    ctx.translate(CW / 2, CH / 2 + 14);
+    ctx.scale(1.5, 1.5);
+    G.boss.draw();
+    ctx.restore();
+
+    G.ctx = real;
+  }
+
+  function drawUI(slot, boss) {
+    const ctx = slot.ctx;
+    const real = G.ctx;
+
+    boss.t = t;
+    boss.phase = phase;
+    G.boss.state.boss = boss;
+    G.ctx = ctx;
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, 480, 52);
+    ctx.save();
+    ctx.translate(0, -72);        // drawUI 固定画在 y≈90，挪进这块画布
+    G.boss.drawUI();
+    ctx.restore();
+
+    G.ctx = real;
+  }
+
+  function loop() {
+    if (!paused) t += 1 / 60;
+
+    for (let i = 0; i < slots.length; i++) {
+      drawSlot(slots[i], snaps[i]);
+    }
+    for (let i = 0; i < uiSlots.length; i++) {
+      drawUI(uiSlots[i], snaps[i]);
+    }
+
+    G.boss.reset();
+    requestAnimationFrame(loop);
+  }
+
+  /* ---------- 交互 ---------- */
+  document.querySelectorAll('[data-phase]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      phase = +btn.dataset.phase;
+      document.querySelectorAll('[data-phase]').forEach(function (b) {
+        b.classList.toggle('on', b === btn);
+      });
+    });
+  });
+
+  const pauseBtn = document.getElementById('pause');
+  pauseBtn.addEventListener('click', function () {
+    paused = !paused;
+    pauseBtn.textContent = paused ? '▶ 继续动画' : '⏸ 暂停动画';
+    pauseBtn.classList.toggle('on', paused);
+  });
+
+  loop();
+})();
+</script>
+</body>
+</html>

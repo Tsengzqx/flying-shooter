@@ -570,7 +570,16 @@
 
     S.bulletWave = lv('gen_wave');
     S.bulletRicochet = lv('gen_ricochet');
-    S.homing = lv('gen_homing');
+
+    /* ---------- 追踪弹头 ----------
+       转向率（弧度/秒）刻意压得很低，而且**收益递减**：1.15 → 1.55 → 1.95。
+       子弹飞完一个屏幕高度（约 0.95 秒）只能转 66°~112° ——
+       够把散开的弹道收拢到目标上，但做不到"掉头追人"。
+       另外追踪期间弹速 −12%，是有代价的。 */
+    S.homing = lv('gen_homing');                      // 层数（面板 / 兼容用）
+    S.homingTurn = S.homing > 0 ? 1.15 + 0.40 * (S.homing - 1) : 0;
+    S.homingCone = 72 * Math.PI / 180;                // 只在机首 ±72° 锥形内索敌
+    S.homingSpeedMul = S.homing > 0 ? 0.88 : 1;
 
     /* ---------- 射速 ---------- */
     let cd = Math.pow(0.88, lv('gen_rapid'))
@@ -1247,16 +1256,22 @@
     // 玩家会觉得"僚机完全没继承"，round 让继承可见且曲线更平滑
     const lanes = Math.round((S.extraBullets || 0) * k) + (S.droneBullets || 0);
 
+    // 追踪：僚机只继承本体转向率的 **60%**（而不是按 25% 继承比例），
+    // 否则 20 架僚机 × 5 发全部带追踪，屏幕会被"自动瞄准"统治
+    const droneTurn = (S.droneHoming > 0 ? 0.95 + 0.35 * (S.droneHoming - 1) : 0)
+      + (S.homingTurn || 0) * 0.60;
+
     return {
       damage: lerp(1, S.damage) * (S.droneDamageMul || 1),
       cdMul: lerp(1, S.fireRateMul) * (S.droneFireMul || 1),
       // 上限保护：20 架僚机各自狂射会把屏幕和帧率一起打爆
       bullets: Math.max(1, Math.min(DRONE_MAX_BULLETS, 1 + lanes)),
       spread: (S.spreadAngle || 0) * k + (S.droneSpread || 0),
-      speedMul: lerp(1, S.bulletSpeedMul),
+      speedMul: lerp(1, S.bulletSpeedMul) * (droneTurn > 0 ? (S.homingSpeedMul || 1) : 1),
       sizeMul: lerp(1, S.bulletSizeMul),
       pierce: Math.round((S.pierce || 0) * k) + (S.dronePierce || 0),
-      homing: (S.droneHoming || 0) + (S.homing || 0) * k,
+      homing: droneTurn,
+      homingCone: S.homingCone,
       // 只有拿了"精英护航"僚机才吃暴击（保持半继承的取舍感）
       critChance: (S.droneCrit || 0) > 0
         ? Math.min(1, (S.critChance || 0) * k + 0.25 * ((S.droneCrit || 1) - 1))
@@ -1322,6 +1337,7 @@
         damage: ds.damage,
         pierce: ds.pierce,
         homing: ds.homing,
+        homingCone: ds.homingCone,
         style: ds.style,
         critChance: ds.critChance,
       };

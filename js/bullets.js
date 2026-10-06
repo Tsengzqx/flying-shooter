@@ -148,6 +148,73 @@
   }
 
   /* ---------------- 更新 ---------------- */
+
+  /** 角度差归一到 (-π, π] */
+  function angleDiff(a, b) {
+    let d = a - b;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    return d;
+  }
+
+  /** 目标是否还在子弹机首的锥形内 */
+  function inCone(b, t, cur, cone) {
+    return Math.abs(angleDiff(Math.atan2(t.y - b.y, t.x - b.x), cur)) <= cone;
+  }
+
+  /** 目标是否还活着 */
+  function targetAlive(t) {
+    return !!t && t.alive !== false && !t.dead && (t.hp === undefined || t.hp > 0);
+  }
+
+  /**
+   * 追踪弹头：三条限制让它"帮得上忙"但不会变成磁铁
+   *   ① 转向率低（1.15~1.95 rad/s）—— 飞完一屏只能转 66°~112°
+   *   ② 只在机首 ±72° 锥形内索敌，**也只在锥形内保持锁定**
+   *      → 身后的目标不追，冲过头了也不会掉头绕回来
+   *   ③ 锁定后不再换目标；目标死亡或跑出锥形才重新索敌
+   */
+  function steerHoming(b, targets, dt) {
+    const cone = b.homingCone == null ? 1.2566 : b.homingCone;
+    const cur = Math.atan2(b.vy, b.vx);
+
+    // 锁定还有效吗？
+    let tgt = b.lock;
+    if (tgt && (!targetAlive(tgt) || !inCone(b, tgt, cur, cone))) {
+      tgt = null;
+      b.lock = null;
+    }
+
+    // 重新索敌：锥形内最近的一个
+    if (!tgt) {
+      let bestD = Infinity;
+      for (let k = 0; k < targets.length; k++) {
+        const e = targets[k];
+        if (!targetAlive(e)) continue;
+
+        const dx = e.x - b.x;
+        const dy = e.y - b.y;
+        const d = dx * dx + dy * dy;
+        if (d >= bestD) continue;
+        if (!inCone(b, e, cur, cone)) continue;
+
+        bestD = d;
+        tgt = e;
+      }
+      b.lock = tgt;
+    }
+
+    if (!tgt) return;
+
+    const turn = angleDiff(Math.atan2(tgt.y - b.y, tgt.x - b.x), cur);
+    const maxTurn = b.homing * dt;
+    const sp = Math.hypot(b.vx, b.vy) || 1;
+    const a = cur + Math.max(-maxTurn, Math.min(maxTurn, turn));
+
+    b.vx = Math.cos(a) * sp;
+    b.vy = Math.sin(a) * sp;
+  }
+
   function updateList(list, dt) {
     const homingTargets = G.enemies ? G.enemies.list : null;
 
@@ -157,27 +224,7 @@
 
       /* ---- 追踪弹头 ---- */
       if (b.homing > 0 && homingTargets && homingTargets.length) {
-        let best = null;
-        let bestD = Infinity;
-        for (const e of homingTargets) {
-          if (!e) continue;
-          const d = (e.x - b.x) * (e.x - b.x) + (e.y - b.y) * (e.y - b.y);
-          if (d < bestD) { bestD = d; best = e; }
-        }
-        if (best) {
-          const desired = Math.atan2(best.y - b.y, best.x - b.x);
-          let cur = Math.atan2(b.vy, b.vx);
-          let diff = desired - cur;
-          while (diff > Math.PI) diff -= Math.PI * 2;
-          while (diff < -Math.PI) diff += Math.PI * 2;
-
-          const maxTurn = b.homing * 3.4 * dt;
-          cur += Math.max(-maxTurn, Math.min(maxTurn, diff));
-
-          const sp = Math.hypot(b.vx, b.vy) || 1;
-          b.vx = Math.cos(cur) * sp;
-          b.vy = Math.sin(cur) * sp;
-        }
+        steerHoming(b, homingTargets, dt);
       }
 
       b.x += b.vx * dt;
@@ -278,9 +325,10 @@
 
     /**
      * 我方子弹
-     * @param {object} [opt] { r, damage, pierce, homing, wave, ricochet, style, elems, critChance }
+     * @param {object} [opt] { r, damage, pierce, homing, homingCone, wave, ricochet, style, elems, critChance }
      *        style = 本体造型（normal/laser/heavy/rail）
      *        elems = 元素光晕列表（plasma/frost/venom），不再替换本体造型
+     *        homing = 转向率（弧度/秒），homingCone = 索敌锥形半角
      *        critChance 传了就覆盖本体的暴击率（僚机用得到）
      */
     spawnPlayer(x, y, vx, vy, opt) {
@@ -294,6 +342,8 @@
         damage: opt.damage || 1,
         pierce: opt.pierce || 0,
         homing: opt.homing || 0,
+        homingCone: opt.homingCone,
+        lock: null,                   // 当前锁定的目标（追踪用）
         ricochet: opt.ricochet || 0,
         critChance: opt.critChance,   // undefined = 用本体的暴击率
         style: opt.style || 'normal',
