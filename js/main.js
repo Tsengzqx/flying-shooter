@@ -188,12 +188,33 @@ Game.stats = {
   ringShot: 0,           // 相位环射：定期打出一圈弹幕
   frontLanes: 0,         // 前向弹道：机首正前方的笔直弹道
   mirror: 0,             // 镜像齐射：向后同步打一排
-  bulletStyle: 'normal', // 子弹外观风格
+  bulletStyle: 'normal', // 子弹本体造型
+  bulletElements: [],    // 子弹元素光晕（plasma/frost/venom）
   echoChance: 0,         // 金色：回响射击
   splash: 0,             // 等离子弹：溅射
   frost: 0,              // 霜冻弹：减速
   arc: 0,                // 电弧弹：小范围连锁
-  venom: 0,              // 剧毒弹：中毒叠层
+  /* 流派 · 辐射（持续伤害 DOT）
+     这是一条**独立于常规子弹**的伤害通道：下面这些字段是它唯一的来源，
+     不读 damage / critChance / critMul / fireRateMul / hitDamage。 */
+  dotActive: false,      // 是否已点燃（拿到辐射源）
+  dotPerStack: 0,        // 每层每秒伤害
+  dotPerHit: 0,          // 每次命中叠加的层数
+  dotMax: 0,             // 单个目标层数上限
+  dotInterval: 0.5,      // 跳数间隔（秒）
+  dotDuration: 4,        // 持续时间（秒）
+  dotCritChance: 0,      // DOT 专属暴击率（与子弹暴击无关）
+  dotCritMul: 1.5,       // DOT 专属暴击伤害
+  dotCrit: 0,            // 来源标记：致命衰变层数
+  dotCritDmg: 0,         // 来源标记：毁伤衰变层数
+  dotDouble: 0,          // 双跳概率
+  dotChain: 0,           // 层数越高跳得越快
+  dotBurst: 0,           // 层数叠满时引爆
+  dotSpread: 0,          // 击杀时散播层数
+  dotField: 0,           // 身周辐射力场
+  dotPlague: 0,          // 金色：星尘瘟疫
+  dotMeltdown: 0,        // 金色：熔毁协议
+  dotSingularity: 0,     // 金色：奇点衰变
   /* 流派 · 弹幕 */
   swarmAmmo: 0,
   /* 流派 · 道具 */
@@ -244,7 +265,6 @@ Game.stats = {
   explodeOnKill: 0,
   chain: 0,
   slow: 0,
-  burn: 0,
   vamp: 0,
   pointDef: 0,
   /* 经济 */
@@ -253,6 +273,21 @@ Game.stats = {
   /* 召唤 */
   drones: 0,
   orbits: 0,
+  /* 舰队流：僚机编队 */
+  droneInherit: 0.25,    // 僚机继承本体数值的比例（基础 25%）
+  droneDamageMul: 1,
+  droneFireMul: 1,
+  droneBullets: 0,       // 僚机专属额外弹道
+  droneSpread: 0,
+  dronePierce: 0,
+  droneHoming: 0,
+  droneCrit: 0,
+  dronePointDef: 0,
+  fleetBodyDamage: 0,    // 每架僚机给本体带来的伤害加成
+  fleetLink: 0,          // 神经链接层数
+  goldArmada: 0,         // 金色：星海舰队
+  goldOverlord: 0,       // 金色：旗舰指挥
+  goldPhalanx: 0,        // 金色：方阵齐射
   /* 特殊 */
   berserk: 0,
   execute: 0,

@@ -70,9 +70,10 @@
     const r = Math.max(MIN_R, radius);
     const pulse = 0.9 + 0.1 * Math.sin(b.t * 16);
 
+    // 光晕收窄：以前是 2.2 倍半径实心，高弹幕量下会糊成一片紫雾
     ctx.fillStyle = glow;
     ctx.beginPath();
-    ctx.arc(b.x, b.y, r * 2.2 * pulse, 0, Math.PI * 2);
+    ctx.arc(b.x, b.y, r * 1.5 * pulse, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.fillStyle = color;
@@ -81,29 +82,44 @@
     ctx.fill();
   }
 
-  /** 单发我方子弹的绘制（按风格区分） */
-  function drawFriendly(b) {
-    const style = b.style || 'normal';
+  /**
+   * 元素光晕（等离子 / 霜冻 / 剧毒）
+   * 关键：元素只作为"套在弹体外面的光环"，不再替换弹体本身的外观。
+   * 之前 等离子弹 会让所有子弹变成又粗又紫的圆球，看起来像 bug。
+   */
+  const ELEMENT = {
+    plasma: { line: 'rgba(190,110,255,0.55)', glow: 'rgba(190,110,255,0.16)' },
+    frost:  { line: 'rgba(120,230,255,0.55)', glow: 'rgba(120,230,255,0.16)' },
+    venom:  { line: 'rgba(140,235,90,0.55)',  glow: 'rgba(140,235,90,0.16)'  },
+    ember:  { line: 'rgba(255,150,60,0.55)',  glow: 'rgba(255,150,60,0.16)'  },
+  };
 
-    switch (style) {
+  function elementAura(b, el, tier) {
+    const e = ELEMENT[el];
+    if (!e) return;
+
+    const ctx = G.ctx;
+    const r = Math.max(MIN_R, b.r);
+    const ring = r * (1.7 + 0.55 * tier);
+
+    ctx.fillStyle = e.glow;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, ring * 0.8, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = e.line;
+    ctx.lineWidth = Math.max(MIN_LINE, r * 0.32);
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, ring, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  /** 单个子弹的"本体造型"（不含元素光晕） */
+  function drawCore(b, core) {
+    switch (core) {
       case 'heavy':
         line(b, 'rgba(255,180,90,0.4)', b.r * 1.2, 0.016);
-        orb(b, '#fff0c8', 'rgba(255,170,60,0.35)', b.r * 1.35);
-        break;
-
-      case 'plasma':
-        line(b, 'rgba(190,110,255,0.35)', b.r * 1.1, 0.016);
-        orb(b, '#f0d5ff', 'rgba(190,110,255,0.45)', b.r * 1.5);
-        break;
-
-      case 'frost':
-        line(b, 'rgba(120,230,255,0.35)', b.r * 1.0, 0.016);
-        orb(b, '#e6ffff', 'rgba(120,230,255,0.45)', b.r * 1.3);
-        break;
-
-      case 'venom':
-        line(b, 'rgba(120,230,80,0.35)', b.r * 1.0, 0.016);
-        orb(b, '#e6ffb0', 'rgba(120,230,80,0.45)', b.r * 1.35);
+        orb(b, '#fff0c8', 'rgba(255,170,60,0.35)', b.r * 1.1);
         break;
 
       case 'rail':
@@ -119,6 +135,16 @@
       default:
         strokeLine(b, '#eafcff', 'rgba(90,210,255,0.35)', Math.max(MIN_R, b.r) * 0.9);
     }
+  }
+
+  /** 单发我方子弹的绘制：先铺元素光晕，再画弹体造型 */
+  function drawFriendly(b) {
+    const elems = b.elems;
+    if (elems && elems.length) {
+      // 多层元素时半径依次外扩，避免完全重叠看不出来
+      for (let i = 0; i < elems.length; i++) elementAura(b, elems[i], i);
+    }
+    drawCore(b, b.style || 'normal');
   }
 
   /* ---------------- 更新 ---------------- */
@@ -252,7 +278,10 @@
 
     /**
      * 我方子弹
-     * @param {object} [opt] { r, damage, pierce, homing, wave, ricochet, style }
+     * @param {object} [opt] { r, damage, pierce, homing, wave, ricochet, style, elems, critChance }
+     *        style = 本体造型（normal/laser/heavy/rail）
+     *        elems = 元素光晕列表（plasma/frost/venom），不再替换本体造型
+     *        critChance 传了就覆盖本体的暴击率（僚机用得到）
      */
     spawnPlayer(x, y, vx, vy, opt) {
       opt = opt || {};
@@ -266,7 +295,9 @@
         pierce: opt.pierce || 0,
         homing: opt.homing || 0,
         ricochet: opt.ricochet || 0,
+        critChance: opt.critChance,   // undefined = 用本体的暴击率
         style: opt.style || 'normal',
+        elems: opt.elems && opt.elems.length ? opt.elems : null,
         waveAmp: 0,
         waveFreq: 0,
         wavePrev: 0,

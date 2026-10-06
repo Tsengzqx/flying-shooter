@@ -195,12 +195,13 @@
       fireCd: 0.9 + Math.random() * 1.5,
       fireCd2: 2.2,
       hitFlash: 0,
-      burnT: 0,
-      burnDps: 0,
       frostT: 0,       // 霜冻弹减速剩余时间
       frostMul: 1,     // 减速倍率（越小越慢）
-      venomT: 0,       // 剧毒弹中毒剩余时间
-      venomDps: 0,
+      /* 辐射流：持续伤害（DOT）
+         辐射 / 剧毒 / 燃烧 三种来源共用这一份层数 */
+      dotStacks: 0,    // 当前持续伤害层数
+      dotT: 0,         // 剩余持续时间
+      dotTick: 0,      // 距离下一次跳数
       art: def.art || def.r,
       xp: def.xp || 1,
       elite: false,
@@ -389,29 +390,30 @@
       e.stateT += dt;
       if (e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - dt * 5);
 
-      /* ---- 燃烧弹持续伤害 ---- */
-      if (e.burnT > 0) {
-        e.burnT -= dt;
-        e.hp -= e.burnDps * dt;
-        if (Math.random() < dt * 22 && G.particles) {
-          G.particles.spark(e.x + (Math.random() - 0.5) * 14, e.y, '#ff9a3a');
-        }
-        if (e.hp <= 0) {
-          G.enemies.damage(i, 9999, { depth: 0 });
-          continue;
-        }
-      }
+      /* ---- 辐射流：按"层数"结算的持续伤害 ----
+         辐射 / 剧毒 / 燃烧 走的是同一条管线（upgrades.tickDot），
+         公式与 Boss 共用；这里只负责把结果落到敌机身上。 */
+      if (e.dotStacks > 0 && G.upgrades && G.upgrades.tickDot) {
+        const R = G.upgrades.tickDot(e, dt);
 
-      /* ---- 剧毒弹持续伤害 ---- */
-      if (e.venomT > 0) {
-        e.venomT -= dt;
-        e.hp -= e.venomDps * dt;
-        if (Math.random() < dt * 18 && G.particles) {
-          G.particles.spark(e.x + (Math.random() - 0.5) * 14, e.y, '#9ae66e');
+        if (R.dmg > 0 && G.combat && G.combat.record) {
+          // DOT 是独立伤害类型：单独用绿色飘字，和子弹伤害区分开
+          G.combat.record(e.x, e.y, R.dmg, R.crit, 'dot' + e.uid, 'dot');
         }
-        if (e.hp <= 0) {
-          G.enemies.damage(i, 9999, { depth: 0 });
+
+        if (R.dead) {
+          G.enemies.damage(i, 9999, { depth: 0, dot: true });
           continue;
+        }
+
+        if (R.burst) {
+          if (G.particles) {
+            G.particles.sweep(e.x, e.y, R.burst.radius, '#b6ff6e', 0.4, 2.5);
+            G.particles.burst(e.x, e.y, { color: '#9ae66e', count: 18, speed: 300 });
+          }
+          if (G.upgrades.blastAround) {
+            G.upgrades.blastAround(e.x, e.y, R.burst.radius, R.burst.dmg, true);
+          }
         }
       }
 
@@ -727,6 +729,33 @@
 
   /** 精英光环 + 血条 */
   function drawOverlay(ctx, e, designR) {
+    // 持续伤害层数：绿色光晕 + 层数读数，让 DOT 流能看清"烂到几层了"
+    // 辐射 / 剧毒 / 燃烧 三层数已经合流，所以这里只有一个读数
+    if (e.dotStacks > 0) {
+      const S = G.stats || {};
+      const k = S.dotMax > 0 ? Math.min(1, e.dotStacks / S.dotMax) : 0;
+
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.10 + 0.32 * k;
+      const rg = ctx.createRadialGradient(0, 0, designR * 0.3, 0, 0, designR * 1.5);
+      rg.addColorStop(0, 'rgba(150,230,90,0.55)');
+      rg.addColorStop(1, 'rgba(150,230,90,0)');
+      ctx.fillStyle = rg;
+      ctx.beginPath();
+      ctx.arc(0, 0, designR * 1.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      if (e.dotStacks >= 3) {
+        ctx.fillStyle = 'rgba(214,255,154,' + (0.55 + 0.45 * k).toFixed(2) + ')';
+        ctx.font = '700 10px "Segoe UI", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('☣' + e.dotStacks, 0, designR + 13);
+      }
+    }
+
     if (e.elite) {
       const pulse = 0.55 + 0.45 * Math.sin(e.t * 5);
       ctx.save();
@@ -907,11 +936,13 @@
       const S = G.stats || {};
 
       e.hp -= (dmg || 1);
-      e.hitFlash = 1;
+      // DOT 跳数不闪白（否则敌人会一直抖）；但 DOT 引发的爆炸仍要闪
+      if (!opts.dot || opts.flash) e.hitFlash = 1;
 
-      if (S.burn > 0 && e.hp > 0) {
-        e.burnT = 3;
-        e.burnDps = 0.35 * S.burn;
+      // 辐射流：只有"常规子弹命中"才叠 DOT 层。
+      // DOT 自身造成的伤害标了 opts.dot，再叠层会变成自我循环。
+      if (!opts.dot && e.hp > 0 && G.upgrades && G.upgrades.applyDot) {
+        G.upgrades.applyDot(e, S.dotPerHit || 0);
       }
 
       if (e.hp > 0) {
@@ -932,8 +963,25 @@
       const exp = e.xp || 1;
       const eelite = e.elite;
       const designR = e.art || e.r;
+      const edot = e.dotStacks || 0;
 
       list.splice(i, 1);
+
+      // 辐射扩散：死亡时把层数传染给附近的敌人
+      if (edot > 0 && S.dotSpread > 0) {
+        const range = (70 + 26 * S.dotSpread) * (S.dotPlague > 0 ? 2 : 1);
+        const give = S.dotPlague > 0 ? edot : Math.ceil(edot * 0.5);
+
+        if (G.particles) G.particles.sweep(ex, ey, range, '#9ae66e', 0.38, 2.2);
+
+        for (let k = list.length - 1; k >= 0; k--) {
+          const nb = list[k];
+          if (!nb) continue;
+          if (Math.hypot(nb.x - ex, nb.y - ey) <= range + nb.r) {
+            G.upgrades.applyDot(nb, give);
+          }
+        }
+      }
 
       if (G.particles && G.particles.burst) {
         const big = etype === 'escort' || etype === 'gunship' || eelite;

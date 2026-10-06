@@ -174,6 +174,7 @@
 
     const spd = 760 * (S.bulletSpeedMul || 1);
     const style = S.bulletStyle || 'normal';
+    const elems = S.bulletElements;
 
     // 大部分弹道共享的参数
     const base = {
@@ -183,6 +184,7 @@
       homing: S.homing || 0,
       ricochet: S.bulletRicochet || 0,
       style: style,
+      elems: elems,
     };
     // 只有主炮带波动，侧翼/尾部保持笔直
     const mainOpt = Object.assign({}, base, { wave: S.bulletWave || 0 });

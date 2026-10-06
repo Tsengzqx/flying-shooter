@@ -391,11 +391,15 @@ kbd {
 .build-swarm   { color: #7fe0ff !important; background: rgba(86, 214, 255, .14) !important; }
 .build-item    { color: #ffc46b !important; background: rgba(255, 176, 58, .14) !important; }
 .build-level   { color: #7bf0b4 !important; background: rgba(110, 231, 168, .14) !important; }
+.build-fleet   { color: #9db8ff !important; background: rgba(110, 150, 255, .16) !important; }
+.build-rad     { color: #86e05a !important; background: rgba(110, 224, 90, .14) !important; }
 .build-general { color: #a9c6e4 !important; background: rgba(140, 180, 220, .12) !important; }
 
 .chip.build-swarm   { border-color: rgba(86, 214, 255, .45); }
 .chip.build-item    { border-color: rgba(255, 176, 58, .45); }
 .chip.build-level   { border-color: rgba(110, 231, 168, .45); }
+.chip.build-fleet   { border-color: rgba(110, 150, 255, .5); }
+.chip.build-rad     { border-color: rgba(110, 224, 90, .5); }
 .chip.build-general { border-color: rgba(140, 180, 220, .3); }
 
 .card-icon { font-size: 34px; line-height: 1; filter: drop-shadow(0 0 10px rgba(120, 200, 255, .45)); }

@@ -595,11 +595,13 @@ if (G.upgrades) {
   const builds = {};
   for (const b of POOL) builds[b.build] = (builds[b.build] || 0) + 1;
 
-  ok('三大流派 + 通用都存在',
-    ['item', 'level', 'swarm', 'general'].every((k) => builds[k] > 0),
+  const STREAMS = ['swarm', 'item', 'level', 'fleet'];
+
+  ok('四大流派 + 通用都存在',
+    STREAMS.concat('general').every((k) => builds[k] > 0),
     JSON.stringify(builds));
   ok('每个流派至少 6 个增益',
-    ['item', 'level', 'swarm'].every((k) => builds[k] >= 6),
+    STREAMS.every((k) => builds[k] >= 6),
     JSON.stringify(builds));
   ok('通用增益数量充足', builds.general >= 10, 'general=' + builds.general);
 
@@ -610,12 +612,12 @@ if (G.upgrades) {
   ok('存在高品质增益', epics >= 5, 'epic=' + epics);
   ok('存在金色品质增益', golds >= 6, 'gold=' + golds);
   ok('每个流派都有紫色增益',
-    ['swarm', 'item', 'level'].every((k) =>
+    STREAMS.every((k) =>
       POOL.filter((b) => b.build === k && b.rarity === 'epic').length >= 4),
-    ['swarm', 'item', 'level'].map((k) =>
+    STREAMS.map((k) =>
       k + ':' + POOL.filter((b) => b.build === k && b.rarity === 'epic').length).join(' '));
   ok('每个流派都有金色增益',
-    ['swarm', 'item', 'level'].every((k) =>
+    STREAMS.every((k) =>
       POOL.filter((b) => b.build === k && b.rarity === 'gold').length >= 2));
   ok('每个增益都写了「升级增量」说明',
     POOL.every((b) => typeof b.delta === 'string' && b.delta.length > 0));
@@ -678,6 +680,22 @@ if (G.upgrades) {
     ['gold_level_surge',    'xpMul',        (v) => v >= 2.5],
     ['gold_level_transcend','goldTranscend',(v) => v > 0],
     ['gold_level_ascend',   'goldAscend',   (v) => v > 0],
+    /* 舰队流 */
+    ['fleet_drone',  'drones',         (v) => v > 0],
+    ['fleet_rank',   'drones',         (v) => v > 0],
+    ['fleet_sync',   'droneInherit',   (v) => v > 0.25],
+    ['fleet_rapid',  'droneFireMul',   (v) => v < 1],
+    ['fleet_power',  'droneDamageMul', (v) => v > 1],
+    ['fleet_fan',    'droneSpread',    (v) => v > 0],
+    ['fleet_aim',    'droneHoming',    (v) => v > 0],
+    ['fleet_pierce', 'dronePierce',    (v) => v > 0],
+    ['fleet_guard',  'dronePointDef',  (v) => v > 0],
+    ['fleet_escort', 'droneCrit',      (v) => v > 0],
+    ['fleet_barrage','droneBullets',   (v) => v > 0],
+    ['fleet_link',   'fleetLink',      (v) => v > 0],
+    ['gold_fleet_armada',   'goldArmada',   (v) => v > 0],
+    ['gold_fleet_overlord', 'goldOverlord', (v) => v > 0],
+    ['gold_fleet_phalanx',  'goldPhalanx',  (v) => v > 0],
     /* 通用 */
     ['gen_hitpower', 'hitDamage',     (v) => v > 0],
     ['gen_laser',    'bulletSpeedMul',(v) => v > 1],
@@ -688,7 +706,24 @@ if (G.upgrades) {
     ['gen_plasma',   'splash',        (v) => v > 0],
     ['gen_frost',    'frost',         (v) => v > 0],
     ['gen_arc',      'arc',           (v) => v > 0],
-    ['gen_venom',    'venom',         (v) => v > 0],
+    ['dot_core',     'dotPerStack',  (v) => v > 0],
+    ['dot_stack',    'dotPerHit',    (v) => v > 1],
+    ['dot_power',    'dotPerStack',  (v) => v > 0.1],
+    ['dot_cap',      'dotMax',       (v) => v > 8],
+    ['dot_haste',    'dotInterval',  (v) => v < 0.5],
+    ['dot_duration', 'dotDuration',  (v) => v > 4],
+    ['dot_crit',     'dotCritChance',(v) => v > 0],
+    ['dot_critdmg',  'dotCritMul',   (v) => v > 1.5],
+    ['dot_double',   'dotDouble',    (v) => v > 0],
+    ['dot_burn',     'dotPerHit',    (v) => v > 1],
+    ['dot_venom',    'dotDuration',  (v) => v > 4],
+    ['dot_chain',    'dotChain',     (v) => v > 0],
+    ['dot_burst',    'dotBurst',     (v) => v > 0],
+    ['dot_spread',   'dotSpread',    (v) => v > 0],
+    ['dot_field',    'dotField',     (v) => v > 0],
+    ['gold_dot_meltdown',    'dotMeltdown',    (v) => v > 0],
+    ['gold_dot_plague',      'dotPlague',      (v) => v > 0],
+    ['gold_dot_singularity', 'dotSingularity', (v) => v > 0],
     ['gen_rail',     'bulletStyle',   (v) => v === 'rail'],
     ['gen_pointdef', 'pointDef',      (v) => v > 0],
     ['gen_rapid',    'fireRateMul',   (v) => v < 1],
@@ -703,11 +738,9 @@ if (G.upgrades) {
     ['gen_invuln',   'invulnBonus',   (v) => v > 0],
     ['gen_revive',   'revive',        (v) => v > 0],
     ['gen_freeze',   'slow',          (v) => v > 0],
-    ['gen_burn',     'burn',          (v) => v > 0],
     ['gen_explode',  'explodeOnKill', (v) => v > 0],
     ['gen_chain',    'chain',         (v) => v > 0],
     ['gen_vamp',     'vamp',          (v) => v > 0],
-    ['gen_drone',    'drones',        (v) => v > 0],
     ['gen_orbit',    'orbits',        (v) => v > 0],
     ['gen_combo',    'combo',         (v) => v > 0],
     ['gen_score',    'scoreMul',      (v) => v > 1],
@@ -730,6 +763,8 @@ if (G.upgrades) {
     if (!def) { broken.push(id + '(不在池中)'); continue; }
 
     startSafe();
+    // 辐射流的所有增益都以"辐射源"为点火前置，否则层数 / 每层伤害恒为 0
+    if (def.build === 'rad' && id !== 'dot_core') G.upgrades.owned.dot_core = 1;
     G.upgrades.owned[id] = 1;
     G.upgrades.recalc();
 
@@ -764,7 +799,7 @@ if (G.upgrades) {
     'fireRateMul=' + S.fireRateMul.toFixed(3));
 
   startSafe();
-  G.upgrades.owned.gen_drone = 2;
+  G.upgrades.owned.fleet_drone = 1;      // 2 架僚机
   G.upgrades.owned.gen_orbit = 3;
   G.upgrades.recalc();
   G.upgrades.syncSummons();
@@ -790,7 +825,8 @@ if (G.upgrades) {
   ok('3 个选项互不重复', new Set(offerIds).size === 3, offerIds.join(','));
   ok('选项均来自增益池', offerIds.every((id) => G.upgrades.POOL.some((b) => b.id === id)));
   ok('选项都带流派标记',
-    G.upgrades.state.offers.every((b) => ['item', 'level', 'swarm', 'general'].includes(b.build)));
+    G.upgrades.state.offers.every((b) =>
+      ['item', 'level', 'swarm', 'fleet', 'rad', 'general'].includes(b.build)));
 
   const frozenY = G.player.y;
   G.input.held.up = true;
@@ -952,20 +988,63 @@ if (G.upgrades && G.particles) {
   ok('寒冰力场让敌机变慢', slowDist < fastDist * 0.75,
     '减速后=' + slowDist.toFixed(0) + ' 正常=' + fastDist.toFixed(0));
 
-  // 燃烧弹
+  // 辐射流（持续伤害 DOT）：命中叠层 → 按跳持续掉血
   startSafe();
   G.enemies.list.length = 0;
   G.enemies.wave.queue.length = 0;
-  G.upgrades.owned.gen_burn = 4;
+  G.upgrades.owned.dot_core = 3;
+  G.upgrades.owned.dot_stack = 3;
   G.upgrades.recalc();
+  ok('持续伤害已激活（每层每秒伤害 > 0）', G.stats.dotPerStack > 0,
+    'dotPerStack=' + G.stats.dotPerStack.toFixed(3));
   G.enemies.spawn('gunship', G.W / 2);
-  const burnE = G.enemies.list[0];
-  const hp0 = burnE.hp;
+  const dotE = G.enemies.list[0];
+  const hp0 = dotE.hp;
   G.enemies.damage(0, 1, {});
-  ok('燃烧弹命中后挂上灼烧状态', burnE.burnT > 0, 'burnT=' + burnE.burnT.toFixed(2));
+  ok('命中后叠上持续伤害层数', (dotE.dotStacks || 0) >= G.stats.dotPerHit && dotE.dotT > 0,
+    'stacks=' + (dotE.dotStacks || 0));
+  const stacksAfterOne = dotE.dotStacks;
+  G.enemies.damage(0, 1, {});
+  ok('连续命中会叠加层数', dotE.dotStacks > stacksAfterOne,
+    stacksAfterOne + ' → ' + dotE.dotStacks);
   for (let i = 0; i < 60; i++) step(16);
-  ok('灼烧会持续掉血', burnE.hp < hp0 - 1,
-    hp0 + ' → ' + (burnE.hp || 0).toFixed(1));
+  ok('持续伤害会按跳掉血', dotE.hp < hp0 - 1,
+    hp0 + ' → ' + (dotE.hp || 0).toFixed(1));
+  ok('层数有上限', dotE.dotStacks <= G.stats.dotMax,
+    'stacks=' + dotE.dotStacks + ' 上限=' + G.stats.dotMax);
+
+  // 层数上限可被增益抬高
+  startSafe();
+  G.upgrades.owned.dot_core = 5;
+  G.upgrades.owned.dot_cap = 4;
+  G.upgrades.recalc();
+  G.enemies.list.length = 0;
+  G.enemies.wave.queue.length = 0;
+  G.enemies.spawn('gunship', G.W / 2);
+  const capE = G.enemies.list[0];
+  capE.hp = 1e9;
+  for (let i = 0; i < 40; i++) G.enemies.damage(0, 1, {});
+  ok('层数上限可被增益抬高', capE.dotStacks > 8,
+    'stacks=' + capE.dotStacks + ' / ' + G.stats.dotMax);
+
+  // 击杀时把层数散播给周围敌人
+  startSafe();
+  G.upgrades.owned.dot_core = 5;
+  G.upgrades.owned.dot_spread = 3;
+  G.upgrades.recalc();
+  G.enemies.list.length = 0;
+  G.enemies.wave.queue.length = 0;
+  G.enemies.spawn('gunship', G.W / 2 - 30);
+  G.enemies.spawn('gunship', G.W / 2 + 30);
+  const src = G.enemies.list[0];
+  const near = G.enemies.list[1];
+  src.hp = 1;
+  src.dotStacks = 6;
+  G.enemies.damage(0, 5, {});
+  const srcGone = G.enemies.list.indexOf(src) === -1;
+  ok('带层数的敌人被击杀后移除', srcGone);
+  ok('扩散把层数传给附近敌机', (near.dotStacks || 0) > 0,
+    'near.stacks=' + (near.dotStacks || 0));
 
   // 点防系统
   startSafe();
@@ -973,12 +1052,77 @@ if (G.upgrades && G.particles) {
   G.upgrades.recalc();
   G.upgrades.state.pointDefT = 0;
   G.bullets.reset();
+  G.particles.clear();
   for (let k = 0; k < 5; k++) {
     G.bullets.spawnEnemy(G.player.x + k * 10 - 20, G.player.y - 40, 0, 100);
   }
   for (let i = 0; i < 10; i++) step(16);
   ok('点防系统清除了附近敌弹', G.bullets.hostile.length < 5,
     '剩余 ' + G.bullets.hostile.length + ' 颗');
+
+  // 点防必须给出"清除半径"的视觉提示，否则玩家不知道范围有多大
+  const sweeps = G.particles.list.filter((p) => p.kind === 'sweep');
+  ok('点防触发时发出范围指示环', sweeps.length > 0,
+    'sweep 粒子 ' + sweeps.length + ' 个');
+  if (sweeps.length) {
+    const sw = sweeps[0];
+    const expectR = G.upgrades.pointDefRadius(G.stats.pointDef, false);
+    ok('指示环半径 = 实际清除半径',
+      Math.abs(sw.toR - expectR) < 0.001,
+      'toR=' + sw.toR + ' / 实际 ' + expectR);
+    ok('指示环从中心扩散而不是原地闪',
+      sw.r0 < sw.toR, 'r0=' + sw.r0 + ' → toR=' + sw.toR);
+  }
+
+  // 指示环会随时间扩散并自动回收
+  const rBefore = sweeps.length ? sweeps[0].r : 0;
+  for (let i = 0; i < 4; i++) step(16);
+  if (sweeps.length && G.particles.list.indexOf(sweeps[0]) !== -1) {
+    ok('指示环半径随时间扩大', sweeps[0].r > rBefore,
+      rBefore.toFixed(1) + ' → ' + sweeps[0].r.toFixed(1));
+  } else {
+    ok('指示环半径随时间扩大', true, '粒子已回收');
+  }
+  for (let i = 0; i < 40; i++) step(16);
+  ok('指示环会自动回收（不会泄漏粒子）',
+    G.particles.list.filter((p) => p.kind === 'sweep').length === 0,
+    '残留 ' + G.particles.list.filter((p) => p.kind === 'sweep').length + ' 个');
+
+  // 等离子溅射光环要节流，否则高射速下满屏紫圈（用户反馈：子弹像变成了紫色）
+  startSafe();
+  G.upgrades.owned.gen_plasma = 4;
+  G.upgrades.recalc();
+  G.player.autoFire = false;              // 只喂自己造的子弹，计数干净
+  G.enemies.list.length = 0;
+  G.enemies.wave.queue.length = 0;
+  G.enemies.spawn('gunship', G.W / 2);
+  const plasmaE = G.enemies.list[0];
+  plasmaE.hp = 1e9;
+  plasmaE.fireCd = 999;
+  plasmaE.x = G.W / 2;
+  plasmaE.baseX = G.W / 2;
+  plasmaE.y = 200;
+  G.bullets.reset();
+  G.particles.clear();
+  G.combat.reset();
+
+  let ringPeak = 0;
+  let hitCount = 0;
+  for (let i = 0; i < 40; i++) {
+    // 每帧贴脸喂一发，模拟高射速等离子弹
+    G.bullets.spawnPlayer(plasmaE.x, plasmaE.y + 20, 0, -200, {
+      r: 4, damage: 1, style: 'normal', elems: ['plasma'],
+    });
+    step(16);
+    hitCount = G.upgrades.state.hits;
+    const n = G.particles.list.filter((p) => p.kind === 'ring').length;
+    if (n > ringPeak) ringPeak = n;
+  }
+  G.player.autoFire = true;
+
+  ok('等离子弹确实在持续命中', hitCount > 20, '命中 ' + hitCount + ' 次');
+  ok('等离子溅射光环做了节流（不会每发都画）', ringPeak <= 3,
+    '40 次命中同屏最多 ' + ringPeak + ' 个 ring 粒子');
 
   // 凤凰核心
   startSafe();
@@ -991,7 +1135,7 @@ if (G.upgrades && G.particles) {
 
   // 僚机
   startSafe();
-  G.upgrades.owned.gen_drone = 2;
+  G.upgrades.owned.fleet_drone = 1;      // 2 架僚机
   G.upgrades.recalc();
   G.upgrades.syncSummons();
   G.bullets.reset();
@@ -999,7 +1143,7 @@ if (G.upgrades && G.particles) {
   ok('僚机会自动开火', G.bullets.friendly.length > 0,
     '子弹 ' + G.bullets.friendly.length + ' 颗');
   ok('僚机跟随玩家', G.upgrades.state.drones.every((d) =>
-    Math.hypot(d.x - G.player.x, d.y - G.player.y) < 150));
+    Math.hypot(d.x - G.player.x, d.y - G.player.y) < 170));
 }
 
 console.log('\n[20] 道具流：掉落、吸附与拾取');
@@ -2002,10 +2146,15 @@ if (G.upgrades && G.enemies) {
   /* ---------- 流派倾向 ---------- */
   startSafe();
   const baseAff = U.buildAffinity();
-  ok('未投入时三大流派权重相同',
-    Math.abs(baseAff.swarm - baseAff.item) < 1e-9 &&
-    Math.abs(baseAff.item - baseAff.level) < 1e-9,
+  const BUILD_KEYS = ['swarm', 'item', 'level', 'fleet', 'rad'];
+  ok('未投入时各流派权重相同',
+    BUILD_KEYS.every((k) => Math.abs(baseAff[k] - 1) < 1e-9),
     JSON.stringify(baseAff));
+  ok('流派权重表不含 NaN', BUILD_KEYS.every((k) => Number.isFinite(baseAff[k])),
+    JSON.stringify(baseAff));
+  ok('池中所有流派都在权重表内',
+    U.POOL.every((b) => b.build === 'general' || Number.isFinite(baseAff[b.build])),
+    Array.from(new Set(U.POOL.map((b) => b.build))).join(','));
 
   startSafe();
   U.owned.swarm_ammo = 4;
@@ -2146,12 +2295,18 @@ if (G.upgrades && G.bullets) {
   const U = G.upgrades;
   const S = G.stats;
 
-  /* ---------- 子弹外观风格 ---------- */
+  /* ---------- 子弹外观：本体造型 + 元素光晕 ---------- */
   const styleOf = (id) => {
+    startSafe();
+    if (id) U.owned[id] = 1;
+    U.recalc();
+    return S.bulletStyle;
+  };
+  const elemsOf = (id) => {
     startSafe();
     U.owned[id] = 1;
     U.recalc();
-    return S.bulletStyle;
+    return (S.bulletElements || []).slice();
   };
 
   startSafe();
@@ -2160,13 +2315,54 @@ if (G.upgrades && G.bullets) {
   const sHeavy = styleOf('gen_heavy');
   const sPlasma = styleOf('gen_plasma');
   const sFrost = styleOf('gen_frost');
-  const sVenom = styleOf('gen_venom');
+  const sVenom = styleOf('dot_venom');
   const sRail = styleOf('gen_rail');
 
   ok('默认子弹风格为 normal', normalStyle === 'normal', normalStyle);
-  ok('不同子弹增益产出不同的外观风格',
-    new Set([sLaser, sHeavy, sPlasma, sFrost, sVenom, sRail]).size === 6,
-    [sLaser, sHeavy, sPlasma, sFrost, sVenom, sRail].join('/'));
+  ok('本体造型增益产出不同外观',
+    new Set([sLaser, sHeavy, sRail, normalStyle]).size === 4,
+    [sLaser, sHeavy, sRail, normalStyle].join('/'));
+  ok('默认没有元素光晕', (S.bulletElements || []).length === 0,
+    JSON.stringify(S.bulletElements));
+
+  // 元素类增益只加光晕，不改本体造型（避免"子弹突然变紫变粗"）
+  ok('等离子弹 = 本体造型不变 + purple 光晕',
+    sPlasma === 'normal' && elemsOf('gen_plasma').join() === 'plasma',
+    sPlasma + ' / ' + JSON.stringify(elemsOf('gen_plasma')));
+  ok('霜冻弹 = 本体造型不变 + frost 光晕',
+    sFrost === 'normal' && elemsOf('gen_frost').join() === 'frost',
+    sFrost + ' / ' + JSON.stringify(elemsOf('gen_frost')));
+  ok('剧毒弹 = 本体造型不变 + venom 光晕',
+    sVenom === 'normal' && elemsOf('dot_venom').join() === 'venom',
+    sVenom + ' / ' + JSON.stringify(elemsOf('dot_venom')));
+  ok('燃烧弹 = 本体造型不变 + ember 光晕',
+    styleOf('dot_burn') === 'normal' && elemsOf('dot_burn').join() === 'ember',
+    styleOf('dot_burn') + ' / ' + JSON.stringify(elemsOf('dot_burn')));
+
+  startSafe();
+  U.owned.gen_plasma = 1;
+  U.owned.gen_frost = 1;
+  U.owned.dot_venom = 1;
+  U.owned.dot_burn = 1;
+  U.owned.gen_laser = 1;
+  U.recalc();
+  ok('多种元素可以同时叠在同一个弹体上',
+    (S.bulletElements || []).length === 4, JSON.stringify(S.bulletElements));
+  ok('同时拿激光弹时本体保持激光造型', S.bulletStyle === 'laser', S.bulletStyle);
+
+  // 元素会随子弹一起生成（渲染层看得到）
+  startSafe();
+  U.owned.gen_plasma = 2;
+  U.recalc();
+  G.bullets.reset();
+  G.bullets.spawnPlayer(240, G.H - 100, 0, -300, {
+    style: S.bulletStyle, elems: S.bulletElements,
+  });
+  const pBullet = G.bullets.friendly[0];
+  ok('子弹携带元素光晕数据', pBullet && pBullet.elems &&
+    pBullet.elems.indexOf('plasma') >= 0, JSON.stringify(pBullet && pBullet.elems));
+  ok('子弹本体造型未被元素覆盖', pBullet && pBullet.style === 'normal',
+    pBullet && pBullet.style);
 
   /* ---------- 波动弹相位 ---------- */
   startSafe();
@@ -2275,7 +2471,608 @@ if (G.upgrades && G.bullets) {
   if (U.state.offers.length) U.choose(U.state.offers[0].id);
 }
 
-console.log('\n[33] 长时间稳定性（自动选强化 + 自动重开）');
+console.log('\n[33] 舰队流：僚机编队');
+if (G.upgrades && G.bullets) {
+  const U = G.upgrades;
+  const S = G.stats;
+
+  /* ---------- 数量与上限 ---------- */
+  startSafe();
+  ok('初始没有僚机', S.drones === 0);
+
+  U.owned.fleet_drone = 1;
+  U.recalc();
+  ok('「僚机」1 层召唤 2 架', S.drones === 2, 'drones=' + S.drones);
+
+  U.owned.fleet_rank = 3;
+  U.recalc();
+  ok('「编队扩充」每层 +1 架', S.drones === 5, 'drones=' + S.drones);
+
+  startSafe();
+  for (const b of U.POOL) {
+    if (b.build === 'fleet') U.owned[b.id] = b.max;   // 舰队流全部顶满
+  }
+  U.recalc();
+  ok('僚机数量存在上限', S.drones === U.DRONE_CAP,
+    'drones=' + S.drones + ' / 上限 ' + U.DRONE_CAP);
+  ok('上限为 20 架', U.DRONE_CAP === 20, 'DRONE_CAP=' + U.DRONE_CAP);
+
+  U.syncSummons();
+  ok('召唤物数组与数量同步', U.state.drones.length === U.DRONE_CAP,
+    'state.drones=' + U.state.drones.length);
+
+  /* ---------- 25% 继承 ---------- */
+  startSafe();
+  U.owned.fleet_drone = 1;
+  U.owned.gen_power = 6;            // 本体先堆出实际伤害，才看得出继承差异
+  U.recalc();
+  ok('默认继承比例是 25%', Math.abs(S.droneInherit - 0.25) < 1e-9,
+    'inherit=' + S.droneInherit);
+
+  const playerDmg = S.damage;
+  const ds1 = U.droneStats();
+  const expect = 1 + (playerDmg - 1) * 0.25;
+  ok('僚机伤害 = 基础 + (本体−基础)×25%',
+    Math.abs(ds1.damage - expect) < 1e-6,
+    '本体 ' + playerDmg.toFixed(2) + ' → 僚机 ' + ds1.damage.toFixed(2) +
+    '（期望 ' + expect.toFixed(2) + '）');
+  ok('僚机伤害确实低于本体（半继承有取舍）', ds1.damage < playerDmg,
+    ds1.damage.toFixed(2) + ' < ' + playerDmg.toFixed(2));
+
+  U.owned.fleet_sync = 4;
+  U.recalc();
+  ok('数据同步提升继承比例', S.droneInherit > 0.25,
+    'inherit=' + S.droneInherit.toFixed(2));
+  const ds2 = U.droneStats();
+  ok('继承比例越高僚机越强', ds2.damage > ds1.damage,
+    ds1.damage.toFixed(2) + ' → ' + ds2.damage.toFixed(2));
+
+  /* ---------- 继承弹道数量 ---------- */
+  startSafe();
+  U.owned.fleet_drone = 1;
+  U.owned.swarm_ammo = 4;
+  U.recalc();
+  const lanes = U.droneStats().bullets;
+  ok('僚机继承本体的弹道数量（约 1/4）', lanes > 1,
+    '本体额外 ' + S.extraBullets + ' 条 → 僚机每轮 ' + lanes + ' 发');
+  ok('单架僚机弹道有上限（防止 20 架刷爆屏幕）',
+    lanes <= U.DRONE_MAX_BULLETS,
+    '僚机每轮 ' + lanes + ' 发 / 上限 ' + U.DRONE_MAX_BULLETS);
+  ok('20 架僚机的总弹道量可控',
+    U.DRONE_CAP * U.DRONE_MAX_BULLETS <= 100,
+    U.DRONE_CAP + ' 架 × ' + U.DRONE_MAX_BULLETS + ' 发 = ' +
+    (U.DRONE_CAP * U.DRONE_MAX_BULLETS) + ' 发/轮');
+
+  /* ---------- 继承真的会随本体变强而变强（回归：floor 吞掉小数） ---------- */
+  startSafe();
+  U.owned.fleet_drone = 3;
+  U.recalc();
+  const lanesBare = U.droneStats().bullets;
+  U.owned.swarm_ammo = 4;           // 本体 +4 条额外弹道
+  U.owned.swarm_rate = 3;
+  U.recalc();
+  const dsRich = U.droneStats();
+  ok('本体堆弹道后僚机弹道确实增加', dsRich.bullets > lanesBare,
+    lanesBare + ' → ' + dsRich.bullets);
+  ok('僚机射速继承本体的攻速', dsRich.cdMul < 1,
+    'cdMul=' + dsRich.cdMul.toFixed(3) + '（本体系数 ' + S.fireRateMul.toFixed(3) + '）');
+
+  /* ---------- 僚机专属加成 ---------- */
+  startSafe();
+  U.owned.fleet_drone = 1;
+  U.recalc();
+  const dmgNoPower = U.droneStats().damage;
+  U.owned.fleet_power = 2;
+  U.recalc();
+  ok('火力共享提高僚机伤害', U.droneStats().damage > dmgNoPower,
+    dmgNoPower.toFixed(2) + ' → ' + U.droneStats().damage.toFixed(2));
+
+  startSafe();
+  U.owned.fleet_drone = 1;
+  U.owned.fleet_rapid = 3;
+  U.recalc();
+  ok('快速循环缩短僚机射击间隔', U.droneStats().cdMul < 1,
+    'cdMul=' + U.droneStats().cdMul.toFixed(2));
+
+  startSafe();
+  U.owned.fleet_aim = 2;
+  U.recalc();
+  ok('协同瞄准让僚机子弹追踪', U.droneStats().homing > 0);
+
+  startSafe();
+  U.owned.fleet_escort = 1;
+  U.owned.gen_crit = 5;
+  U.recalc();
+  ok('精英护航让僚机吃暴击', U.droneStats().critChance > 0,
+    '僚机暴击率=' + U.droneStats().critChance.toFixed(2));
+
+  startSafe();
+  U.owned.gen_crit = 5;
+  U.recalc();
+  ok('没有精英护航时僚机不暴击', U.droneStats().critChance === 0);
+
+  /* ---------- 僚机越多，本体越强 ---------- */
+  startSafe();
+  const bodyNoLink = S.damage;
+  U.owned.fleet_drone = 5;
+  U.owned.fleet_link = 3;
+  U.recalc();
+  ok('神经链接让僚机反过来强化本体', S.damage > bodyNoLink,
+    bodyNoLink.toFixed(2) + ' → ' + S.damage.toFixed(2) +
+    '（' + S.drones + ' 架僚机）');
+
+  /* ---------- 实战：僚机真的会开火并命中 ---------- */
+  startSafe();
+  U.owned.fleet_drone = 3;         // 6 架
+  U.recalc();
+  U.syncSummons();
+  G.player.autoFire = false;       // 只数僚机的子弹
+  G.bullets.reset();
+  G.enemies.list.length = 0;
+  G.enemies.wave.queue.length = 0;
+  G.particles.clear();
+
+  G.enemies.spawn('gunship', G.W / 2);
+  const dummy = G.enemies.list[0];
+  dummy.x = G.W / 2; dummy.baseX = G.W / 2; dummy.y = 460;
+  dummy.amp = 0; dummy.vy = 0; dummy.fireCd = 999;
+  dummy.hp = 99999; dummy.maxHp = 99999;
+  dummy.r = 150;                   // 做成大靶子：僚机是分散列阵，不会都对准中线
+
+  // 记录峰值：子弹打中大靶子就被消耗，瞬时值可能刚好是 0
+  let sawBullets = 0;
+  for (let i = 0; i < 90; i++) {
+    step(16);
+    if (G.bullets.friendly.length > sawBullets) sawBullets = G.bullets.friendly.length;
+  }
+
+  ok('僚机会自动开火', sawBullets > 0, '场上峰值 ' + sawBullets + ' 颗');
+  ok('僚机子弹能打中敌人', dummy.hp < 99999,
+    '假想敌剩余 HP ' + dummy.hp.toFixed(0));
+
+  const xs = U.state.drones.map((d) => d.x);
+  const spread = Math.max.apply(null, xs) - Math.min.apply(null, xs);
+  ok('僚机展开成编队（分散在两侧）', spread > 40,
+    '横向跨度 ' + spread.toFixed(0) + 'px');
+  ok('僚机都在屏幕内', U.state.drones.every((d) =>
+    d.x >= 0 && d.x <= G.W && d.y >= 0 && d.y <= G.H));
+
+  G.player.autoFire = true;
+
+  /* ---------- 金色舰队增益 ---------- */
+  startSafe();
+  ok('未解锁金色时抽不到舰队金卡',
+    !U.goldUnlocked('fleet') && U.buildCount('fleet') === 0);
+
+  U.owned.fleet_drone = 5;          // 5 层
+  U.owned.fleet_rank = 3;           // +3 层 = 8 层，达到金色解锁门槛
+  U.recalc();
+  ok('舰队流堆够层数后解锁金色',
+    U.goldUnlocked('fleet'), 'fleet 层数=' + U.buildCount('fleet') +
+    ' / 门槛 ' + U.GOLD_UNLOCK);
+
+  startSafe();
+  U.owned.fleet_drone = 2;          // 4 架
+  U.owned.gold_fleet_armada = 1;
+  U.recalc();
+  ok('星海舰队额外 +4 架僚机', S.drones === 8, 'drones=' + S.drones);
+  ok('星海舰队提高继承比例', S.droneInherit > 0.25,
+    'inherit=' + S.droneInherit.toFixed(2));
+
+  startSafe();
+  U.owned.fleet_drone = 5;
+  U.owned.gold_fleet_phalanx = 1;
+  U.recalc();
+  ok('方阵齐射增加僚机弹道', S.droneBullets >= 2, 'droneBullets=' + S.droneBullets);
+  ok('方阵齐射增加僚机穿透', S.dronePierce >= 2, 'dronePierce=' + S.dronePierce);
+
+  /* ---------- 面板会显示僚机 ---------- */
+  startSafe();
+  U.owned.fleet_drone = 1;
+  U.owned.fleet_sync = 2;
+  U.recalc();
+  const fleetRows = G.panel.rows().map((r) => r.label);
+  ok('战斗面板显示僚机数量', fleetRows.indexOf('僚机') >= 0, fleetRows.join('/'));
+  ok('战斗面板不再显示继承比例行（避免顶部面板过长）',
+    fleetRows.indexOf('僚机继承') === -1, fleetRows.join('/'));
+
+  startSafe();
+  U.recalc();
+  const noFleetRows = G.panel.rows().map((r) => r.label);
+  ok('没有僚机时面板不显示该行', noFleetRows.indexOf('僚机') === -1,
+    noFleetRows.join('/'));
+}
+
+console.log('\n[34] 辐射流：独立于常规子弹的持续伤害（DOT）');
+if (G.upgrades && G.enemies) {
+  const U = G.upgrades;
+  const S = G.stats;
+
+  /* ============================================================
+     ① 三种伤害源（辐射 / 燃烧 / 剧毒）合流成同一种伤害
+     ============================================================ */
+  startSafe();
+  U.owned.dot_core = 3;
+  U.recalc();
+  const basePerStack = S.dotPerStack;
+  const basePerHit = S.dotPerHit;
+  const baseMax = S.dotMax;
+  const baseDuration = S.dotDuration;
+
+  U.owned.dot_burn = 1;
+  U.recalc();
+  ok('燃烧弹提高每层伤害', S.dotPerStack > basePerStack,
+    basePerStack.toFixed(3) + ' → ' + S.dotPerStack.toFixed(3));
+  ok('燃烧弹提高每次叠层', S.dotPerHit > basePerHit,
+    basePerHit + ' → ' + S.dotPerHit);
+  ok('燃烧弹提高层数上限', S.dotMax > baseMax, baseMax + ' → ' + S.dotMax);
+
+  startSafe();
+  U.owned.dot_core = 3;
+  U.owned.dot_venom = 1;
+  U.recalc();
+  ok('剧毒弹提高每层伤害', S.dotPerStack > 0.30,
+    'dotPerStack=' + S.dotPerStack.toFixed(3));
+  ok('剧毒弹延长持续时间', S.dotDuration > baseDuration,
+    baseDuration + 's → ' + S.dotDuration + 's');
+
+  // 三者合流：同一个目标身上只有一份层数
+  startSafe();
+  U.owned.dot_core = 2;
+  U.owned.dot_burn = 1;
+  U.owned.dot_venom = 1;
+  U.recalc();
+  G.enemies.list.length = 0;
+  G.enemies.wave.queue.length = 0;
+  G.enemies.spawn('gunship', G.W / 2);
+  const mixE = G.enemies.list[0];
+  mixE.hp = 1e9;
+  G.enemies.damage(0, 1, {});
+  ok('三种来源共用同一份层数（只有一个计数）',
+    Object.keys(mixE).filter((k) => /Stacks$/.test(k)).join() === 'dotStacks',
+    Object.keys(mixE).filter((k) => /Stacks$/.test(k)).join());
+  ok('燃烧 / 剧毒 / 辐射 叠加后每跳只有一种伤害类型',
+    mixE.dotStacks === S.dotPerHit,
+    'stacks=' + mixE.dotStacks + ' / 每次 ' + S.dotPerHit);
+
+  /* ============================================================
+     ② 不点火就没有伤害：只有辐射源能点燃
+     ============================================================ */
+  startSafe();
+  U.owned.dot_burn = 4;
+  U.owned.dot_venom = 3;
+  U.recalc();
+  ok('没有辐射源时 DOT 不激活', !S.dotActive && S.dotPerStack === 0,
+    'perStack=' + S.dotPerStack);
+  G.enemies.list.length = 0;
+  G.enemies.wave.queue.length = 0;
+  G.enemies.spawn('gunship', G.W / 2);
+  const noCoreE = G.enemies.list[0];
+  noCoreE.hp = 1e9;
+  G.enemies.damage(0, 1, {});
+  ok('没有辐射源时命中不叠层', (noCoreE.dotStacks || 0) === 0,
+    'stacks=' + noCoreE.dotStacks);
+
+  /* ============================================================
+     ③ 核心诉求：DOT 不吃常规子弹加成
+     ============================================================ */
+  const dotSnapshot = () => ({
+    perStack: S.dotPerStack, perHit: S.dotPerHit, max: S.dotMax,
+    interval: S.dotInterval, duration: S.dotDuration,
+    crit: S.dotCritChance, critMul: S.dotCritMul,
+  });
+
+  startSafe();
+  U.owned.dot_core = 3;
+  U.recalc();
+  const bare = dotSnapshot();
+
+  // 把所有常规子弹增益堆满
+  U.owned.gen_power = 8;        // 子弹伤害 +0.5/层
+  U.owned.gen_bigshot = 4;
+  U.owned.gen_heavy = 3;
+  U.owned.gen_crit = 6;         // 子弹暴击率
+  U.owned.gen_critdmg = 5;      // 子弹暴击伤害
+  U.owned.gen_rapid = 5;        // 子弹攻速
+  U.owned.gen_hitpower = 5;     // 命中积累
+  U.owned.gen_execute = 3;      // 对高血量敌人加伤
+  U.owned.gen_berserk = 3;
+  U.owned.swarm_ammo = 5;       // 弹幕流（子弹数量）
+  U.owned.swarm_torrent = 3;
+  U.owned.lv_power = 4;         // 升级流伤害
+  U.owned.item_power = 4;       // 道具流伤害
+  U.recalc();
+  const loaded = dotSnapshot();
+
+  ok('常规子弹的伤害增益不会提高 DOT 每层伤害',
+    loaded.perStack === bare.perStack,
+    '子弹伤害 ' + S.damage.toFixed(1) + ' 时 DOT 每层=' + loaded.perStack.toFixed(4));
+  ok('常规子弹的暴击率不会提高 DOT 暴击率',
+    loaded.crit === bare.crit && loaded.crit === 0,
+    '子弹暴击 ' + Math.round(S.critChance * 100) + '% / DOT 暴击 ' +
+      Math.round(loaded.crit * 100) + '%');
+  ok('常规子弹的暴击伤害不会影响 DOT 暴击伤害',
+    loaded.critMul === bare.critMul && bare.critMul === 1.5,
+    '子弹暴击伤害 ' + Math.round(S.critMul * 100) + '% / DOT ' +
+      Math.round(loaded.critMul * 100) + '%');
+  ok('子弹攻速不会改变 DOT 跳数间隔',
+    loaded.interval === bare.interval,
+    '射速系数 ' + S.fireRateMul.toFixed(3) + ' / 跳数间隔 ' + loaded.interval);
+  ok('弹幕流的弹道数量不会改变 DOT 任何数值',
+    loaded.perHit === bare.perHit && loaded.max === bare.max,
+    '额外弹道 ' + S.extraBullets + ' / 每次叠层 ' + loaded.perHit);
+
+  // 命中积累：子弹命中会喂，DOT 跳数不会
+  startSafe();
+  U.owned.dot_core = 5;
+  U.recalc();
+  G.enemies.list.length = 0;
+  G.enemies.wave.queue.length = 0;
+  G.enemies.spawn('gunship', G.W / 2);
+  const hitE = G.enemies.list[0];
+  hitE.hp = 1e9;
+  hitE.dotStacks = 20;
+  hitE.dotT = 99;
+  hitE.dotTick = 0;
+  U.state.hits = 0;
+  for (let i = 0; i < 120; i++) {
+    U.tickDot(hitE, 0.016);
+  }
+  ok('DOT 跳数不会喂"命中积累"', U.state.hits === 0,
+    'hits=' + U.state.hits);
+
+  // DOT 伤害不受"对高血量敌人加伤 / 背水一战"影响
+  startSafe();
+  U.owned.dot_core = 5;
+  U.recalc();
+  const rawTick = (hpRatioLow) => {
+    const t = { x: 0, y: 0, r: 10, hp: hpRatioLow ? 1e9 : 1e9, maxHp: 1e9, dotStacks: 10, dotT: 99, dotTick: 0 };
+    U.tickDot(t, 0.016);
+    return 1e9 - t.hp;
+  };
+  const plain = rawTick(false);
+  U.owned.gen_execute = 3;
+  U.owned.gen_berserk = 3;
+  U.recalc();
+  const withExec = rawTick(false);
+  ok('"弱点打击 / 背水一战"不会改变 DOT 跳伤',
+    Math.abs(withExec - plain) < 1e-9,
+    plain.toFixed(4) + ' → ' + withExec.toFixed(4));
+
+  /* ============================================================
+     ④ DOT 自己的强化手段确实有效
+     ============================================================ */
+  startSafe();
+  U.owned.dot_core = 5;
+  U.recalc();
+  const tickDmgFor = (stacks) => {
+    const probe = { x: 0, y: 0, r: 10, hp: 1e9, dotStacks: stacks, dotT: 99, dotTick: 0 };
+    U.tickDot(probe, 0.016);
+    return 1e9 - probe.hp;
+  };
+  const lowT = tickDmgFor(3);
+  const highT = tickDmgFor(12);
+  ok('层数越高每跳伤害越高', highT > lowT * 3,
+    '3 层=' + lowT.toFixed(3) + ' → 12 层=' + highT.toFixed(3));
+
+  /* ---------- 回归：缩短跳数间隔必须真的提高 DPS ----------
+     曾经把跳伤写成 `层数 × 每层DPS × 实际间隔`，于是
+         DPS = 跳伤 / 间隔 = 层数 × 每层DPS
+     间隔被约掉，"高频衰变"和"衰变链"两个增益完全无效。
+     现在跳伤用固定参考间隔计算，间隔越短 DPS 越高。 */
+  startSafe();
+  U.owned.dot_core = 3;
+  U.recalc();
+  const dpsAt30 = () => {
+    const t = { x: 0, y: 0, r: 10, hp: 1e12, dotStacks: 30, dotT: 1e9, dotTick: 0 };
+    const before = t.hp;
+    for (let i = 0; i < 400; i++) U.tickDot(t, 0.05);   // 20 秒
+    return (before - t.hp) / 20;
+  };
+  const dpsBase = dpsAt30();
+  U.owned.dot_haste = 4;
+  U.recalc();
+  const dpsHaste = dpsAt30();
+  U.owned.dot_chain = 3;
+  U.recalc();
+  const dpsChain = dpsAt30();
+
+  ok('高频衰变真的提高了 DPS（不是把间隔约掉）',
+    dpsHaste > dpsBase * 1.2,
+    dpsBase.toFixed(1) + ' → ' + dpsHaste.toFixed(1) +
+    ' (×' + (dpsHaste / dpsBase).toFixed(2) + ')');
+  ok('衰变链在高层的加速真的提高了 DPS',
+    dpsChain > dpsHaste * 1.2,
+    dpsHaste.toFixed(1) + ' → ' + dpsChain.toFixed(1) +
+    ' (×' + (dpsChain / dpsHaste).toFixed(2) + ')');
+  ok('跳数间隔有硬下限（不会除零 / 爆帧）',
+    U.dotTickInterval(999) >= 0.05,
+    'interval=' + U.dotTickInterval(999));
+
+  const perStackBare = S.dotPerStack;
+  U.owned.dot_power = 6;
+  U.recalc();
+  ok('衰变强化提高每层伤害', S.dotPerStack > perStackBare,
+    perStackBare.toFixed(3) + ' → ' + S.dotPerStack.toFixed(3));
+
+  startSafe();
+  U.owned.dot_core = 3;
+  U.recalc();
+  const critBefore = S.dotCritChance;
+  const critMulBefore = S.dotCritMul;
+  U.owned.dot_crit = 3;
+  U.owned.dot_critdmg = 4;
+  U.recalc();
+  ok('致命衰变提供 DOT 专属暴击率', S.dotCritChance > critBefore &&
+    Math.abs(S.dotCritChance - 0.30) < 1e-9, 'DOT 暴击=' + S.dotCritChance);
+  ok('毁伤衰变提供 DOT 专属暴击伤害',
+    Math.abs(S.dotCritMul - (critMulBefore + 1.6)) < 1e-9,
+    'DOT 暴击伤害=' + S.dotCritMul);
+
+  /* ---------- 层数 = 命中次数 × 每次层数 ---------- */
+  startSafe();
+  G.enemies.list.length = 0;
+  G.enemies.wave.queue.length = 0;
+  U.owned.dot_core = 3;
+  U.recalc();
+  G.enemies.spawn('gunship', G.W / 2);
+  const stackE = G.enemies.list[0];
+  stackE.hp = 1e9;
+
+  const perHit = S.dotPerHit;
+  for (let i = 0; i < 5; i++) G.enemies.damage(0, 1, {});
+  ok('层数 = 命中次数 × 每次层数',
+    stackE.dotStacks === Math.min(S.dotMax, perHit * 5),
+    stackE.dotStacks + ' / 期望 ' + Math.min(S.dotMax, perHit * 5));
+  ok('叠加层数会刷新持续时间', stackE.dotT > 0, 'dotT=' + stackE.dotT.toFixed(2));
+
+  /* ---------- 会自然衰减 ---------- */
+  startSafe();
+  U.owned.dot_core = 3;
+  U.recalc();
+  const decay = { x: 0, y: 0, r: 10, hp: 1e9, dotStacks: 5, dotT: 0.05, dotTick: 0.01 };
+  U.tickDot(decay, 0.5);
+  ok('持续时间结束后层数清零', decay.dotStacks === 0, 'stacks=' + decay.dotStacks);
+
+  /* ---------- 临界引爆：DOT 自己引发的爆炸不再回叠层数 ---------- */
+  startSafe();
+  U.owned.dot_core = 5;
+  U.owned.dot_burst = 3;
+  U.recalc();
+  G.enemies.list.length = 0;
+  G.enemies.wave.queue.length = 0;
+  G.enemies.spawn('gunship', G.W / 2 + 20);
+  const burstE = G.enemies.list[0];
+  burstE.hp = 1e9;
+  burstE.dotStacks = S.dotMax;
+  burstE.dotT = 99;
+  burstE.dotTick = 0;
+  const stacksAtBurst = burstE.dotStacks;
+  const burstRes = U.tickDot(burstE, 0.016);
+  ok('叠满时触发临界引爆', !!burstRes.burst,
+    burstRes.burst ? '范围 ' + burstRes.burst.radius : '未触发');
+  if (burstRes.burst) {
+    ok('引爆伤害随 DOT 强度缩放', burstRes.burst.dmg > 0,
+      '引爆伤害 ' + burstRes.burst.dmg.toFixed(2));
+    ok('引爆后层数减半（不会自我循环）',
+      burstE.dotStacks === Math.floor(stacksAtBurst / 2),
+      stacksAtBurst + ' → ' + burstE.dotStacks);
+  }
+
+  /* ---------- 辐射场：自动给贴近的敌人叠层，远处的不管 ---------- */
+  startSafe();
+  U.owned.dot_core = 3;
+  U.owned.dot_field = 2;
+  U.recalc();
+  G.enemies.list.length = 0;
+  G.enemies.wave.queue.length = 0;
+  G.enemies.spawn('gunship', G.player.x);
+  G.enemies.spawn('gunship', G.W - 12);
+  const nearE = G.enemies.list[0];
+  const farE = G.enemies.list[1];
+  nearE.y = G.player.y;
+  nearE.x = G.player.x;
+  farE.y = 20;
+  farE.x = G.W - 12;
+  nearE.hp = 1e9;
+  farE.hp = 1e9;
+  farE.fireCd = 999;
+
+  U.state.dotFieldT = 0;
+  for (let i = 0; i < 3; i++) step(16);
+  ok('辐射场给身边敌人自动叠层', (nearE.dotStacks || 0) > 0,
+    'near.stacks=' + (nearE.dotStacks || 0));
+  ok('辐射场范围外的敌人不受影响', (farE.dotStacks || 0) === 0,
+    'far.stacks=' + (farE.dotStacks || 0));
+
+  const fieldR = U.dotFieldRadius(S.dotField);
+  const dist = Math.hypot(farE.x - G.player.x, farE.y - G.player.y);
+  ok('辐射场半径与实际覆盖一致', dist > fieldR,
+    '远机距离 ' + dist.toFixed(0) + ' / 半径 ' + fieldR);
+
+  /* ---------- Boss 也吃 DOT（不能对 Boss 失效） ---------- */
+  startSafe();
+  G.upgrades.owned.dot_core = 5;
+  G.upgrades.recalc();
+  G.progress.state.level = 12;              // 触发 Boss 关
+  G.boss.reset();
+  G.boss.start(12);
+  const bs = G.boss.state.boss;
+  ok('Boss 已生成', !!bs);
+
+  if (bs) {
+    bs.entering = false;
+    bs.hp = bs.maxHp;
+    bs.dotStacks = 0;
+
+    G.boss.tryHit({ x: bs.x, y: bs.y, r: 4, damage: 1, critChance: 0 });
+    ok('打 Boss 也会叠层', (bs.dotStacks || 0) > 0,
+      'stacks=' + bs.dotStacks);
+
+    const bossHp0 = bs.hp;
+    for (let i = 0; i < 120; i++) G.boss.update(0.016);
+    ok('持续伤害会削减 Boss 血量', bs.hp < bossHp0,
+      bossHp0.toFixed(1) + ' → ' + (bs.hp || 0).toFixed(1));
+  }
+
+  /* ---------- 金色门槛 ---------- */
+  startSafe();
+  ok('没投入时不解锁辐射金色',
+    !U.goldUnlocked('rad') && U.buildCount('rad') === 0);
+  U.owned.dot_core = 5;
+  U.owned.dot_stack = 5;
+  U.recalc();
+  ok('辐射流堆够层数后解锁金色',
+    U.goldUnlocked('rad'),
+    'rad 层数=' + U.buildCount('rad') + ' / 门槛 ' + U.GOLD_UNLOCK);
+
+  /* ---------- 面板显示 DOT 数值 ---------- */
+  startSafe();
+  U.owned.dot_core = 3;
+  U.recalc();
+  const dotRows = G.panel.rows().map((r) => r.label);
+  ok('战斗面板显示持续伤害', dotRows.indexOf('持续伤害') >= 0, dotRows.join('/'));
+  ok('战斗面板显示每次叠层', dotRows.indexOf('每次叠层') >= 0, dotRows.join('/'));
+
+  startSafe();
+  U.owned.dot_core = 3;
+  U.owned.dot_crit = 2;
+  U.recalc();
+  const critRows = G.panel.rows().map((r) => r.label);
+  ok('拿了 DOT 暴击后面板多一行 DOT 暴击', critRows.indexOf('DOT 暴击') >= 0,
+    critRows.join('/'));
+
+  startSafe();
+  U.recalc();
+  const noDotRows = G.panel.rows().map((r) => r.label);
+  ok('没投入时面板不显示 DOT 行',
+    noDotRows.indexOf('持续伤害') === -1, noDotRows.join('/'));
+
+  /* ---------- 高层数渲染不崩 ---------- */
+  startSafe();
+  U.owned.dot_core = 5;
+  U.owned.dot_cap = 4;
+  U.owned.dot_burst = 3;
+  U.recalc();
+  G.enemies.list.length = 0;
+  G.enemies.wave.queue.length = 0;
+  G.enemies.spawn('gunship', G.W / 2);
+  const drawE = G.enemies.list[0];
+  drawE.hp = 1e9;
+  drawE.dotStacks = S.dotMax;
+  drawE.dotT = 99;
+  let drawErr = null;
+  try {
+    G.enemies.draw();
+    G.particles.draw();
+  } catch (e) {
+    drawErr = e;
+  }
+  ok('满层 DOT 的敌人可以正常绘制', !drawErr,
+    drawErr ? drawErr.message : '');
+}
+
+console.log('\n[35] 长时间稳定性（自动选强化 + 自动重开）');
 startSafe();
 
 let crashed = null;

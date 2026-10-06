@@ -193,6 +193,135 @@
       desc: '（金色）立即提升 3 个等级',
       delta: '金色增益已满级' },
 
+    /* ================= 🛸 舰队流 =================
+       核心是"僚机数量"，僚机会继承本体 50% 的数值加成
+       （弹道数量、射速、穿透、追踪……都能吃一半，比例本身也可升级）
+       ------------------------------------------------ */
+    { id: 'fleet_drone',   name: '僚机',     icon: '🛸', build: 'fleet', rarity: 'epic',   max: 5,
+      desc: '召唤 2 架僚机协同射击',
+      delta: '再召唤 2 架僚机' },
+    { id: 'fleet_rank',    name: '编队扩充', icon: '🚀', build: 'fleet', rarity: 'common', max: 6,
+      desc: '僚机数量 +1',
+      delta: '僚机再 +1 架' },
+    { id: 'fleet_sync',    name: '数据同步', icon: '📡', build: 'fleet', rarity: 'rare',   max: 4,
+      desc: '僚机继承本体数值的比例 +10%（基础 50%）',
+      delta: '继承比例再 +10%' },
+    { id: 'fleet_rapid',   name: '快速循环', icon: '⏱️', build: 'fleet', rarity: 'common', max: 4,
+      desc: '僚机射击间隔 −15%',
+      delta: '僚机射速再 −15%' },
+    { id: 'fleet_power',   name: '火力共享', icon: '🔥', build: 'fleet', rarity: 'common', max: 5,
+      desc: '僚机伤害 +25%',
+      delta: '僚机伤害再 +25%' },
+    { id: 'fleet_fan',     name: '扇形编队', icon: '🌟', build: 'fleet', rarity: 'common', max: 4,
+      desc: '僚机弹道呈扇形散开，覆盖面更广',
+      delta: '僚机扇形张角再扩大' },
+    { id: 'fleet_aim',     name: '协同瞄准', icon: '🎯', build: 'fleet', rarity: 'rare',   max: 3,
+      desc: '僚机子弹自动追踪敌人',
+      delta: '僚机追踪能力更强' },
+    { id: 'fleet_pierce',  name: '穿甲协奏', icon: '🗡️', build: 'fleet', rarity: 'rare',   max: 3,
+      desc: '僚机子弹可多穿透 1 个敌人',
+      delta: '僚机子弹再穿透 1 个' },
+    { id: 'fleet_guard',   name: '护航点防', icon: '🚨', build: 'fleet', rarity: 'rare',   max: 3,
+      desc: '僚机定期清除自身周围的敌方子弹',
+      delta: '点防更频繁、范围更大' },
+
+    /* ---- 舰队流 · 紫 ---- */
+    { id: 'fleet_escort',  name: '精英护航', icon: '💢', build: 'fleet', rarity: 'epic', max: 3,
+      desc: '僚机获得本体的暴击率与暴击伤害',
+      delta: '僚机暴击率再 +25%' },
+    { id: 'fleet_barrage', name: '饱和投射', icon: '🎆', build: 'fleet', rarity: 'epic', max: 3,
+      desc: '僚机射击间隔 −25%，每轮 +1 条弹道',
+      delta: '再 −25% 间隔，再多 1 条弹道' },
+    { id: 'fleet_link',    name: '神经链接', icon: '🧠', build: 'fleet', rarity: 'epic', max: 3,
+      desc: '每架僚机使本体伤害 +1%',
+      delta: '每架僚机再 +1% 本体伤害' },
+
+    /* ---- 舰队流 · 金 ---- */
+    { id: 'gold_fleet_armada',   name: '星海舰队', icon: '🌌', build: 'fleet', rarity: 'gold', max: 1,
+      desc: '（金色）立刻 +4 架僚机，且继承比例 +25%',
+      delta: '金色增益已满级' },
+    { id: 'gold_fleet_overlord', name: '旗舰指挥', icon: '👑', build: 'fleet', rarity: 'gold', max: 1,
+      desc: '（金色）每架僚机使本体与僚机伤害 +4%',
+      delta: '金色增益已满级' },
+    { id: 'gold_fleet_phalanx',  name: '方阵齐射', icon: '⚔️', build: 'fleet', rarity: 'gold', max: 1,
+      desc: '（金色）僚机每轮 +2 条弹道，穿透 +2',
+      delta: '金色增益已满级' },
+
+    /* ================= ☢️ 辐射流（持续伤害 DOT） =================
+       核心机制：命中给敌机叠加「持续伤害层数」，层数同时决定
+       **每跳伤害** 和 **跳数频率** —— 打得越多，烂得越快。
+
+       辐射 / 剧毒 / 燃烧 三种伤害在数值上是**同一种伤害**，统一走
+       applyDot() + tickDot() 这一条管线，共享同一份层数与同一套公式。
+
+       ⚠️ 整条管线**完全独立于常规子弹**：
+          不读 S.damage / S.critChance / S.critMul / S.fireRateMul /
+          S.hitDamage / damageMultiplier / execute / berserk，
+          也不产生"命中积累"。DOT 想变强，只能靠下面这些增益。
+       ------------------------------------------------------------ */
+    { id: 'dot_core',     name: '辐射源',   icon: '☢️', build: 'rad', rarity: 'epic',   max: 5,
+      desc: '核心：命中即点燃持续伤害，每层每秒 0.10 伤害',
+      delta: '每层每秒伤害 +0.10' },
+    { id: 'dot_stack',    name: '衰变增幅', icon: '🦠', build: 'rad', rarity: 'common', max: 5,
+      desc: '每次命中额外叠加 1 层持续伤害',
+      delta: '每次命中再 +1 层' },
+    { id: 'dot_power',    name: '衰变强化', icon: '🔺', build: 'rad', rarity: 'common', max: 6,
+      desc: '持续伤害 +25%',
+      delta: '持续伤害再 +25%' },
+    { id: 'dot_cap',      name: '临界质量', icon: '⚛️', build: 'rad', rarity: 'rare',   max: 4,
+      desc: '层数上限 +8',
+      delta: '层数上限再 +8' },
+    { id: 'dot_haste',    name: '高频衰变', icon: '📶', build: 'rad', rarity: 'common', max: 4,
+      desc: '跳数间隔 −12%',
+      delta: '跳数间隔再 −12%' },
+    { id: 'dot_duration', name: '半衰期延长', icon: '⌛', build: 'rad', rarity: 'common', max: 4,
+      desc: '持续时间 +1.5 秒',
+      delta: '持续时间再 +1.5 秒' },
+
+    /* ---- 三种伤害源：辐射 / 燃烧 / 剧毒 ---- */
+    { id: 'dot_burn',     name: '燃烧弹',   icon: '🧨', build: 'rad', rarity: 'rare',   max: 4,
+      desc: '灼烧：命中额外 +2 层，持续伤害 +20%，上限 +3',
+      delta: '再 +2 层、伤害再 +20%、上限再 +3' },
+    { id: 'dot_venom',    name: '剧毒弹',   icon: '🟢', build: 'rad', rarity: 'rare',   max: 3,
+      desc: '中毒：命中额外 +1 层，持续时间 +2 秒，伤害 +18%',
+      delta: '再 +1 层、持续再 +2 秒、伤害再 +18%' },
+
+    /* ---- DOT 专属暴击（不吃子弹的暴击率与暴击伤害） ---- */
+    { id: 'dot_crit',     name: '致命衰变', icon: '🟥', build: 'rad', rarity: 'rare',   max: 3,
+      desc: '持续伤害暴击率 +10%（独立于子弹暴击）',
+      delta: '持续伤害暴击率再 +10%' },
+    { id: 'dot_critdmg',  name: '毁伤衰变', icon: '🎯', build: 'rad', rarity: 'rare',   max: 4,
+      desc: '持续伤害暴击伤害 +40%（基础 150%）',
+      delta: '持续伤害暴击伤害再 +40%' },
+    { id: 'dot_double',   name: '双重衰变', icon: '♻️', build: 'rad', rarity: 'rare',   max: 3,
+      desc: '每次跳数有 25% 概率跳两次',
+      delta: '双跳概率再 +25%' },
+
+    /* ---- 辐射流 · 紫 ---- */
+    { id: 'dot_chain',    name: '衰变链',   icon: '⛓️', build: 'rad', rarity: 'epic', max: 3,
+      desc: '层数越高，跳数越快',
+      delta: '加速效果更强' },
+    { id: 'dot_burst',    name: '临界引爆', icon: '☄️', build: 'rad', rarity: 'epic', max: 3,
+      desc: '层数叠满时引爆：造成范围伤害并保留一半层数',
+      delta: '引爆伤害与范围提升' },
+    { id: 'dot_spread',   name: '辐射扩散', icon: '☣️', build: 'rad', rarity: 'epic', max: 3,
+      desc: '敌人死亡时把层数传染给附近的敌人',
+      delta: '传染层数与范围提升' },
+    { id: 'dot_field',    name: '辐射场',   icon: '🌐', build: 'rad', rarity: 'epic', max: 3,
+      desc: '机体周围形成辐射场，持续给附近敌人叠层',
+      delta: '辐射场更大、叠层更快' },
+
+    /* ---- 辐射流 · 金 ---- */
+    { id: 'gold_dot_meltdown',    name: '熔毁协议', icon: '🌋', build: 'rad', rarity: 'gold', max: 1,
+      desc: '（金色）层数上限翻倍，跳数间隔 −30%，持续伤害 +50%',
+      delta: '金色增益已满级' },
+    { id: 'gold_dot_plague',      name: '星尘瘟疫', icon: '🌫️', build: 'rad', rarity: 'gold', max: 1,
+      desc: '（金色）扩散范围翻倍，传染时保留全部层数',
+      delta: '金色增益已满级' },
+    { id: 'gold_dot_singularity', name: '奇点衰变', icon: '🕳️', build: 'rad', rarity: 'gold', max: 1,
+      desc: '（金色）持续伤害 ×3',
+      delta: '金色增益已满级' },
+
     /* ================= ⚙️ 通用 · 子弹类型 ================= */
     { id: 'gen_laser',    name: '激光弹头', icon: '🔆', build: 'general', rarity: 'rare',   max: 3,
       desc: '子弹变细长：速度 +40%，额外穿透 1 个敌人',
@@ -218,9 +347,6 @@
     { id: 'gen_arc',      name: '电弧弹',   icon: '⚡', build: 'general', rarity: 'rare',   max: 3,
       desc: '命中时放出电弧跳向最近的一个敌人',
       delta: '电弧伤害提升' },
-    { id: 'gen_venom',    name: '剧毒弹',   icon: '🟢', build: 'general', rarity: 'rare',   max: 3,
-      desc: '翠绿毒弹，命中后叠加持续中毒',
-      delta: '中毒层数与伤害提升' },
     { id: 'gen_rail',     name: '轨道弹',   icon: '🚄', build: 'general', rarity: 'epic',   max: 2,
       desc: '极细高亮弹道：速度翻倍、穿透无限',
       delta: '速度再翻倍（已无限穿透）' },
@@ -268,9 +394,6 @@
     { id: 'gen_freeze',   name: '寒冰力场', icon: '🧊', build: 'general', rarity: 'rare',   max: 4,
       desc: '全场敌人移动速度下降 15%',
       delta: '全场减速再 +15%' },
-    { id: 'gen_burn',     name: '燃烧弹',   icon: '🧨', build: 'general', rarity: 'rare',   max: 4,
-      desc: '命中后附加持续灼烧伤害',
-      delta: '灼烧伤害提升' },
     { id: 'gen_explode',  name: '爆裂弹',   icon: '💣', build: 'general', rarity: 'rare',   max: 4,
       desc: '击杀敌机时引发范围爆炸',
       delta: '爆炸范围与伤害提升' },
@@ -280,9 +403,6 @@
     { id: 'gen_vamp',     name: '吸血装置', icon: '🩸', build: 'general', rarity: 'rare',   max: 3,
       desc: '累计击杀可回复生命（层数越高越快）',
       delta: '回血所需击杀更少' },
-    { id: 'gen_drone',    name: '僚机',     icon: '✈️', build: 'general', rarity: 'epic',   max: 3,
-      desc: '召唤僚机协同射击',
-      delta: '再多一架僚机' },
     { id: 'gen_orbit',    name: '环绕卫星', icon: '🪐', build: 'general', rarity: 'rare',   max: 4,
       desc: '卫星环绕机体，撞击并伤害敌人',
       delta: '再多一颗卫星' },
@@ -300,7 +420,7 @@
       delta: '对高血量敌人再加 35%' },
   ];
 
-  const BUILD_NAME = { item: '道具流', level: '升级流', swarm: '弹幕流', general: '通用' };
+  const BUILD_NAME = { item: '道具流', level: '升级流', swarm: '弹幕流', fleet: '舰队流', rad: '持续伤害流', general: '通用' };
 
   const byId = {};
   for (const b of POOL) byId[b.id] = b;
@@ -321,6 +441,7 @@
     revives: 0,
     pointDefT: 2,
     airdropT: 14,
+    dotFieldT: 0.6,
     drones: [],
     orbits: [],
     orbitAngle: 0,
@@ -329,6 +450,10 @@
 
   const RARITY_WEIGHT = { common: 62, rare: 30, epic: 12, gold: 0.8 };
   const GOLD_UNLOCK = 8;      // 某流派累计多少层后解锁该流派的金色增益
+  const DRONE_CAP = 20;        // 僚机数量上限
+  const DRONE_BASE_CD = 0.62;  // 僚机基础射击间隔（秒）
+  const DRONE_MAX_BULLETS = 5; // 单架僚机每轮最多打几发（防止 20 架刷爆屏幕）
+  const DRONE_FLEET_TAX = 0.035; // 僚机越多，单机射速略降（保持总输出可控）
 
   /* ============================================================
      三、属性汇总
@@ -356,17 +481,20 @@
 
   /** 各流派的"亲和度"：玩得越多的流派权重越高，通用恒为 1 */
   function buildAffinity() {
-    const inv = { swarm: 0, item: 0, level: 0 };
+    const inv = { swarm: 0, item: 0, level: 0, fleet: 0, rad: 0 };
     for (const b of POOL) {
       if (b.build === 'general') continue;
+      if (!(b.build in inv)) inv[b.build] = 0;   // 新增流派自动纳入，避免 NaN
       inv[b.build] += lv(b.id);
     }
 
-    const total = inv.swarm + inv.item + inv.level;
+    let total = 0;
+    for (const k in inv) total += inv[k];
+
     const aff = { general: 1 };
 
     if (total === 0) {
-      aff.swarm = 1; aff.item = 1; aff.level = 1;
+      for (const k in inv) aff[k] = 1;
       return aff;
     }
 
@@ -385,20 +513,24 @@
     const plv = playerLevel();
     const gained = plv - 1;
 
-    /* ---------- 子弹类型：视觉风格 ---------- */
+    /* ---------- 子弹类型：本体造型 + 元素光晕 ----------
+       造型和元素拆开：以前拿了等离子弹，所有子弹都会变成又粗又紫的圆球，
+       看起来像显示 bug；现在元素只作为套在弹体外的一圈光环。 */
     S.bulletStyle =
       lv('gen_rail') > 0 ? 'rail' :
-      lv('gen_plasma') > 0 ? 'plasma' :
-      lv('gen_frost') > 0 ? 'frost' :
-      lv('gen_venom') > 0 ? 'venom' :
       lv('gen_laser') > 0 ? 'laser' :
       lv('gen_heavy') > 0 ? 'heavy' : 'normal';
+
+    S.bulletElements = [];
+    if (lv('gen_plasma') > 0) S.bulletElements.push('plasma');
+    if (lv('gen_frost') > 0) S.bulletElements.push('frost');
+    if (lv('dot_venom') > 0) S.bulletElements.push('venom');
+    if (lv('dot_burn') > 0) S.bulletElements.push('ember');
 
     /* ---------- 命中特效 ---------- */
     S.splash = lv('gen_plasma');
     S.frost  = lv('gen_frost');
     S.arc    = lv('gen_arc');
-    S.venom  = lv('gen_venom');
 
     /* ---------- 弹幕流：核心是"子弹数量" ---------- */
     let extra = 3 * lv('swarm_ammo') + 2 * lv('swarm_split') + 4 * lv('swarm_torrent');
@@ -452,6 +584,40 @@
 
     S.fireRateMul = Math.max(0.20, cd);
 
+    /* ---------- 舰队流：僚机编队 ---------- */
+    S.drones = Math.min(DRONE_CAP,
+      2 * lv('fleet_drone') +
+      lv('fleet_rank') +
+      (lv('gold_fleet_armada') > 0 ? 4 : 0));
+
+    // 僚机继承本体数值的比例（基础 25%，可被数据同步 / 星海舰队拉高）
+    S.droneInherit = Math.min(1,
+      0.25 + 0.10 * lv('fleet_sync') + (lv('gold_fleet_armada') > 0 ? 0.25 : 0));
+
+    S.droneDamageMul = Math.pow(1.25, lv('fleet_power'))
+      * (lv('gold_fleet_overlord') > 0 ? 1 + 0.04 * S.drones : 1);
+
+    S.droneFireMul = Math.pow(0.85, lv('fleet_rapid'))
+      * Math.pow(0.75, lv('fleet_barrage'))
+      * (lv('gold_fleet_overlord') > 0 ? 0.70 : 1);
+
+    S.droneBullets   = lv('fleet_barrage') + 2 * lv('gold_fleet_phalanx');
+    S.droneSpread    = 0.07 * lv('fleet_fan');
+    S.dronePierce    = lv('fleet_pierce') + 2 * lv('gold_fleet_phalanx');
+    S.droneHoming    = lv('fleet_aim');
+    S.droneCrit      = lv('fleet_escort');
+    S.dronePointDef  = lv('fleet_guard');
+
+    // 每架僚机给本体带来的伤害加成（神经链接 / 旗舰指挥）
+    S.fleetBodyDamage = 0.01 * lv('fleet_link') * S.drones
+      + (lv('gold_fleet_overlord') > 0 ? 0.04 * S.drones : 0);
+
+    /* 舰队流的"来源标记"（这些效果依赖僚机数量，单独留个字段便于面板与调试） */
+    S.fleetLink    = lv('fleet_link');
+    S.goldArmada   = lv('gold_fleet_armada');
+    S.goldOverlord = lv('gold_fleet_overlord');
+    S.goldPhalanx  = lv('gold_fleet_phalanx');
+
     /* ---------- 伤害 ---------- */
     let dmg = 1 + 0.5 * lv('gen_power') + 0.4 * lv('gen_bigshot') + 0.8 * lv('gen_heavy');
     dmg *= Math.pow(0.88, lv('swarm_ammo'));
@@ -472,6 +638,9 @@
 
     // 道具共鸣衍生：转化装置
     dmg += 0.15 * lv('item_converter') * items;
+
+    // 舰队流：僚机越多，本体越强（神经链接 / 旗舰指挥）
+    dmg *= 1 + S.fleetBodyDamage;
 
     S.damage = Math.max(0.2, dmg);
     S.itemDamage = itemRate;
@@ -529,11 +698,58 @@
     S.goldAlchemy     = lv('gold_item_alchemy');
     S.airdrop         = lv('item_airdrop');
 
+    /* ---------- 辐射流：持续伤害 DOT ----------
+       整块只读 dot_* / gold_dot_* 增益，**不引用任何常规子弹属性**。
+       这是"独立伤害类型"的落点：想把 DOT 做强，只能拿 DOT 自己的增益。 */
+    const dotLv = lv('dot_core');
+
+    // 点火条件：必须有辐射源。燃烧弹 / 剧毒弹只是"燃料"，不单独点火。
+    const dotOn = dotLv > 0;
+
+    S.dotPerStack = dotOn
+      ? 0.32 * dotLv
+        * (1 + 0.25 * lv('dot_power'))
+        * (1 + 0.20 * lv('dot_burn'))
+        * (1 + 0.18 * lv('dot_venom'))
+        * (lv('gold_dot_meltdown') > 0 ? 1.50 : 1)
+        * (lv('gold_dot_singularity') > 0 ? 3 : 1)
+      : 0;
+
+    S.dotPerHit = dotOn
+      ? 1 + lv('dot_stack') + 2 * lv('dot_burn') + lv('dot_venom')
+      : 0;
+
+    S.dotMax = (15 + 6 * dotLv + 10 * lv('dot_cap') + 4 * lv('dot_burn'))
+      * (lv('gold_dot_meltdown') > 0 ? 2 : 1);
+
+    // 跳数间隔：越短，跳得越密 —— 注意它**真的影响 DPS**，见 tickDot 的注释
+    S.dotInterval = Math.max(0.05,
+      0.5 * Math.pow(0.88, lv('dot_haste')) * (lv('gold_dot_meltdown') > 0 ? 0.70 : 1));
+
+    S.dotDuration = 4 + 1.5 * lv('dot_duration') + 2 * lv('dot_venom') + lv('dot_burn');
+
+    // DOT 自己的暴击：基础 0%，拿"致命衰变"才有；暴击伤害基础 150%
+    S.dotCritChance = Math.min(1, 0.10 * lv('dot_crit'));
+    S.dotCritMul    = 1.5 + 0.40 * lv('dot_critdmg');
+    S.dotCrit       = lv('dot_crit');          // 来源标记（面板/调试）
+    S.dotCritDmg    = lv('dot_critdmg');
+
+    S.dotDouble   = 0.25 * lv('dot_double');
+    S.dotChain    = lv('dot_chain');
+    S.dotBurst    = lv('dot_burst');
+    S.dotSpread   = lv('dot_spread');
+    S.dotField    = lv('dot_field');
+    S.dotPlague   = lv('gold_dot_plague');
+    S.dotMeltdown = lv('gold_dot_meltdown');
+    S.dotSingularity = lv('gold_dot_singularity');
+
+    // 面板/其它模块判断"DOT 是否激活"只看这一个字段
+    S.dotActive = dotOn;
+
     /* ---------- 特效 ---------- */
     S.explodeOnKill = lv('gen_explode');
     S.chain         = lv('gen_chain');
     S.slow          = lv('gen_freeze');
-    S.burn          = lv('gen_burn');
     S.vamp          = lv('gen_vamp');
     S.pointDef      = lv('gen_pointdef');
     S.echoChance    = lv('gold_swarm_echo') > 0 ? 0.35 : 0;
@@ -555,7 +771,7 @@
     S.execute  = lv('gen_execute');
 
     /* ---------- 召唤 ---------- */
-    S.drones = lv('gen_drone');
+    // 注意：S.drones 已经在"舰队流"那一段算好了，这里不要再覆盖
     S.orbits = lv('gen_orbit');
 
     if (G.lives > S.maxLives) G.lives = S.maxLives;
@@ -565,7 +781,7 @@
   function syncSummons() {
     const S = G.stats;
     while (state.drones.length < S.drones) {
-      state.drones.push({ x: undefined, y: undefined, cd: Math.random() * 0.5, init: false });
+      state.drones.push({ x: undefined, y: undefined, cd: Math.random() * 0.5, defCd: 0, init: false });
     }
     state.drones.length = S.drones;
 
@@ -792,17 +1008,23 @@
   /* ============================================================
      七、特殊效果
      ============================================================ */
-  function areaDamage(x, y, radius, dmg, depth) {
+  /**
+   * 范围伤害
+   * @param {object} [opts] 透传给 enemies.damage / boss.areaDamage
+   *        { dot: true } 表示"这笔伤害来自 DOT"，不再叠加 DOT 层数（否则会自我循环）
+   */
+  function areaDamage(x, y, radius, dmg, depth, opts) {
+    const o = { depth: depth, dot: !!(opts && opts.dot), flash: !!(opts && opts.flash) };
     const E = G.enemies;
     if (E) {
       for (let j = E.list.length - 1; j >= 0; j--) {
         const en = E.list[j];
         if (Math.hypot(en.x - x, en.y - y) <= radius + en.r) {
-          E.damage(j, dmg, { depth: depth });
+          E.damage(j, dmg, o);
         }
       }
     }
-    if (G.boss && G.boss.areaDamage) G.boss.areaDamage(x, y, radius, dmg);
+    if (G.boss && G.boss.areaDamage) G.boss.areaDamage(x, y, radius, dmg, opts);
   }
 
   function chainLightning(x, y, jumps, depth, dmgOverride) {
@@ -837,6 +1059,152 @@
     }
   }
 
+  /* ============================================================
+     DOT 管线：辐射 / 剧毒 / 燃烧 三种伤害在此完全合流
+     ------------------------------------------------------------
+     这是与常规子弹**并列**的第二条伤害通道：
+       · 伤害只由 S.dot* 决定，不读 bullets 的任何加成
+       · 直接扣 hp，不经过 damageMultiplier / hitBonus / execute / berserk
+       · 不调用 addHit()，所以不会喂"命中积累"
+     ============================================================ */
+
+  /**
+   * DOT 的"参考间隔"。跳伤按它计算，而不是按本次实际间隔 ——
+   * 否则间隔会被约掉，缩短间隔的增益全部失效（详见 tickDot 注释）。
+   */
+  const DOT_REF_INTERVAL = 0.5;
+
+  /**
+   * 给任意目标叠持续伤害层数（敌机 / Boss 通用）
+   * @returns {number} 实际叠上去的层数
+   */
+  function applyDot(t, stacks) {
+    const S = G.stats;
+    if (!t || !S || !S.dotActive || !(S.dotPerHit > 0) || !(stacks > 0)) return 0;
+
+    const before = t.dotStacks || 0;
+    t.dotStacks = Math.min(S.dotMax, before + stacks);
+    t.dotT = S.dotDuration || 4;
+    return t.dotStacks - before;
+  }
+
+  /**
+   * 跳数间隔：衰变链让高层数跳得更快（0.05 秒为硬下限）
+   */
+  function dotTickInterval(stacks) {
+    const S = G.stats || {};
+    let iv = S.dotInterval || DOT_REF_INTERVAL;
+    if (S.dotChain > 0) iv /= 1 + 0.008 * stacks * S.dotChain;
+    return Math.max(0.05, iv);
+  }
+
+  /**
+   * 通用 DOT 结算：跳数 + 跳伤 + DOT 专属暴击 + 双重 + 临界引爆
+   * 敌机和 Boss 共用同一套公式，避免两边数值漂移。
+   *
+   * ⚠️ 跳伤用**固定参考间隔** DOT_REF_INTERVAL 计算，而不是本次的实际间隔。
+   *    如果写成 `层数 × 每层DPS × 实际间隔`，那么
+   *        DPS = 跳伤 / 间隔 = 层数 × 每层DPS
+   *    间隔会被完全约掉 —— 于是"高频衰变"和"衰变链"这两个增益一点用都没有。
+   *    用固定参考间隔后：DPS = 层数 × 每层DPS × (参考间隔 / 实际间隔)，
+   *    间隔越短，DPS 越高。
+   *
+   * @returns {{dead:boolean, dmg:number, crit:boolean, burst:null|{radius:number,dmg:number}}}
+   */
+  function tickDot(t, dt) {
+    const out = { dead: false, dmg: 0, crit: false, burst: null };
+    if (!t || !(t.dotStacks > 0)) return out;
+
+    const S = G.stats || {};
+
+    t.dotT -= dt;
+    if (t.dotT <= 0) {
+      t.dotStacks = 0;
+      t.dotTick = 0;
+      return out;
+    }
+
+    t.dotTick -= dt;
+    if (t.dotTick > 0) return out;
+
+    const iv = dotTickInterval(t.dotStacks);
+    t.dotTick = iv;
+
+    // 每跳伤害 = 层数 × 每层每秒伤害 × 固定参考间隔
+    let tickDmg = t.dotStacks * (S.dotPerStack || 0) * DOT_REF_INTERVAL;
+
+    // DOT 专属暴击：只吃"致命衰变 / 毁伤衰变"，和子弹暴击完全无关
+    if (S.dotCritChance > 0 && Math.random() < S.dotCritChance) {
+      tickDmg *= (S.dotCritMul || 2);
+      out.crit = true;
+    }
+
+    // 双重衰变：概率多跳一次
+    if (S.dotDouble > 0 && Math.random() < S.dotDouble) {
+      tickDmg *= 2;
+      out.crit = true;      // 双跳也用高亮飘字，让玩家看得见
+    }
+
+    t.hp -= tickDmg;
+    out.dmg = tickDmg;
+    if (t.hp <= 0) out.dead = true;
+
+    if (G.particles && Math.random() < dt * 26) {
+      const rad = t.r || t.radius || 24;
+      G.particles.spark(
+        t.x + (Math.random() - 0.5) * rad,
+        t.y + (Math.random() - 0.5) * rad,
+        '#9ae66e'
+      );
+    }
+
+    // 临界引爆：层数叠满就地炸开，保留一半层数继续衰变
+    if (S.dotBurst > 0 && t.dotStacks >= S.dotMax) {
+      out.burst = {
+        radius: 60 + 22 * S.dotBurst,
+        dmg: t.dotStacks * 0.6 * S.dotBurst * (S.dotPerStack || 0) * DOT_REF_INTERVAL * 6,
+      };
+      t.dotStacks = Math.floor(t.dotStacks / 2);
+      t.dotTick = Math.max(0.05, iv);
+    }
+
+    return out;
+  }
+
+  /**
+   * 给指定范围内的敌人叠层（辐射场 / 扩散用）
+   * @returns {number} 命中的敌机数
+   */
+  function igniteAround(x, y, radius, stacks) {
+    const E = G.enemies;
+    const S = G.stats;
+    if (!E || !S || !S.dotActive || !(stacks > 0)) return 0;
+
+    let n = 0;
+    for (let j = E.list.length - 1; j >= 0; j--) {
+      const en = E.list[j];
+      if (!en) continue;
+      if (Math.hypot(en.x - x, en.y - y) <= radius + en.r) {
+        applyDot(en, stacks);
+        n++;
+      }
+    }
+    return n;
+  }
+
+  /**
+   * 点防系统的清除半径 —— 本体和僚机共用这一处换算，
+   * 保证"画出来的指示环"和"实际清掉的范围"永远一致。
+   */
+  function pointDefRadius(def, isDrone) {
+    return isDrone ? 60 + 22 * (def || 0) : 110 + 32 * (def || 0);
+  }
+
+  /** 辐射场的覆盖半径（结算与绘制共用，避免画的和算的不一致） */
+  function dotFieldRadius(def) {
+    return 90 + 32 * (def || 0);
+  }
+
   function clearNearbyBullets(x, y, radius, max) {
     const B = G.bullets;
     if (!B) return 0;
@@ -861,19 +1229,65 @@
     if (G.particles) G.particles.text(G.W / 2, 70, '🪂 空投补给', '#ffd166', 16);
   }
 
-  /* ---------------- 召唤物 ---------------- */
+  /* ---------------- 舰队流 · 僚机 ---------------- */
+
+  /**
+   * 僚机数值 = 基础值 + (本体数值 − 基础值) × 继承比例
+   *
+   * 也就是「本体吃到的加成，僚机吃一半」（比例可由数据同步 / 星海舰队拉高）。
+   * 弹道数量、射速、弹速、体积、穿透、追踪、暴击……全都按同一套规则继承。
+   */
+  function droneStats() {
+    const S = G.stats;
+    const k = S.droneInherit == null ? 0.5 : S.droneInherit;
+    const lerp = (base, cur) => base + ((cur == null ? base : cur) - base) * k;
+
+    // 弹道：本体的额外弹道按比例继承，再叠加僚机专属弹道
+    // 用 round 而不是 floor：25% 继承下 floor 会让 3 条额外弹道白白归零，
+    // 玩家会觉得"僚机完全没继承"，round 让继承可见且曲线更平滑
+    const lanes = Math.round((S.extraBullets || 0) * k) + (S.droneBullets || 0);
+
+    return {
+      damage: lerp(1, S.damage) * (S.droneDamageMul || 1),
+      cdMul: lerp(1, S.fireRateMul) * (S.droneFireMul || 1),
+      // 上限保护：20 架僚机各自狂射会把屏幕和帧率一起打爆
+      bullets: Math.max(1, Math.min(DRONE_MAX_BULLETS, 1 + lanes)),
+      spread: (S.spreadAngle || 0) * k + (S.droneSpread || 0),
+      speedMul: lerp(1, S.bulletSpeedMul),
+      sizeMul: lerp(1, S.bulletSizeMul),
+      pierce: Math.round((S.pierce || 0) * k) + (S.dronePierce || 0),
+      homing: (S.droneHoming || 0) + (S.homing || 0) * k,
+      // 只有拿了"精英护航"僚机才吃暴击（保持半继承的取舍感）
+      critChance: (S.droneCrit || 0) > 0
+        ? Math.min(1, (S.critChance || 0) * k + 0.25 * ((S.droneCrit || 1) - 1))
+        : 0,
+      critMul: S.critMul || 2,
+      style: S.bulletStyle || 'normal',
+      pointDef: S.dronePointDef || 0,
+    };
+  }
+
   function updateDrones(dt) {
     const P = G.player;
-    const S = G.stats;
     if (!P || !P.alive) return;
 
     const n = state.drones.length;
+    if (!n) return;
+
+    const ds = droneStats();
+    const spd = 700 * ds.speedMul;
+
+    // 舰队越大，单架僚机射速略降：否则 20 架一起狂射会把屏幕和帧率一起打爆
+    const fleetTax = 1 + DRONE_FLEET_TAX * (n - 1);
+
     for (let i = 0; i < n; i++) {
       const d = state.drones[i];
+
+      // V 字编队：左右分列，越靠后的僚机越往外、越靠后
       const side = i % 2 === 0 ? -1 : 1;
       const tier = Math.floor(i / 2);
-      const tx = P.x + side * (52 + tier * 16);
-      const ty = P.y + 16 + tier * 12;
+      const tx = Math.max(14, Math.min(G.W - 14, P.x + side * (44 + tier * 11)));
+      const ty = Math.min(G.H - 14, P.y + 16 + tier * 7);
 
       if (!d.init) { d.x = tx; d.y = ty; d.init = true; }
 
@@ -881,13 +1295,47 @@
       d.x += (tx - d.x) * k;
       d.y += (ty - d.y) * k;
 
+      /* ---- 护航点防：僚机自己清掉身边的敌弹 ---- */
+      if (ds.pointDef > 0) {
+        d.defCd = (d.defCd || 0) - dt;
+        if (d.defCd <= 0) {
+          d.defCd = Math.max(1.2, 4.5 - 0.9 * ds.pointDef);
+          const r = pointDefRadius(ds.pointDef, true);
+          clearNearbyBullets(d.x, d.y, r, 1 + ds.pointDef);
+          if (G.particles && G.particles.sweep) {
+            G.particles.sweep(d.x, d.y, r, '#8fe9ff', 0.32, 1.6);
+          }
+        }
+      }
+
+      /* ---- 开火 ---- */
       d.cd -= dt;
-      if (d.cd <= 0 && G.bullets && G.bullets.spawnPlayer) {
-        d.cd = 0.5;
-        G.bullets.spawnPlayer(d.x, d.y - 12, 0, -700 * S.bulletSpeedMul, {
-          r: 3,
-          damage: S.damage * 0.6,
-        });
+      if (d.cd > 0) continue;
+      d.cd = Math.max(0.10, DRONE_BASE_CD * ds.cdMul * fleetTax);
+
+      const B = G.bullets;
+      if (!B || !B.spawnPlayer) continue;
+
+      const cnt = ds.bullets;
+      const opt = {
+        r: 3 * ds.sizeMul,
+        damage: ds.damage,
+        pierce: ds.pierce,
+        homing: ds.homing,
+        style: ds.style,
+        critChance: ds.critChance,
+      };
+
+      for (let b = 0; b < cnt; b++) {
+        const off = b - (cnt - 1) / 2;
+        const a = -Math.PI / 2 + off * ds.spread;
+        B.spawnPlayer(
+          d.x + off * 6,
+          d.y - 10,
+          Math.cos(a) * spd,
+          Math.sin(a) * spd,
+          opt
+        );
       }
     }
   }
@@ -938,6 +1386,9 @@
     owned,
     GOLD_UNLOCK,
     RARITY_WEIGHT,
+    DRONE_CAP,
+    DRONE_MAX_BULLETS,
+    DRONE_FLEET_TAX,
 
     lv,
     has(id) { return lv(id) > 0; },
@@ -946,6 +1397,7 @@
     choose,
     recalc,
     syncSummons,
+    droneStats,
     buildCount,
     buildAffinity,
     goldUnlocked,
@@ -964,6 +1416,7 @@
       state.revives = 0;
       state.pointDefT = 2;
       state.airdropT = 14;
+      state.dotFieldT = 0.6;
       state.drones.length = 0;
       state.orbits.length = 0;
       state.orbitAngle = 0;
@@ -986,7 +1439,13 @@
         state.pointDefT -= dt;
         if (state.pointDefT <= 0) {
           state.pointDefT = Math.max(1.4, 4.4 - 0.8 * S.pointDef);
-          clearNearbyBullets(P.x, P.y, 110 + 32 * S.pointDef, 2 + S.pointDef);
+          const radius = pointDefRadius(S.pointDef, false);
+          clearNearbyBullets(P.x, P.y, radius, 2 + S.pointDef);
+
+          // 把"作用范围"画出来：玩家能一眼看到这一下覆盖了多大一圈
+          if (G.particles && G.particles.sweep) {
+            G.particles.sweep(P.x, P.y, radius, '#9ad8ff', 0.42, 2.5);
+          }
         }
       }
 
@@ -998,12 +1457,41 @@
         }
       }
 
+      // 辐射场：机体周围持续给敌人叠层
+      if (S.dotField > 0 && P && P.alive) {
+        state.dotFieldT -= dt;
+        if (state.dotFieldT <= 0) {
+          state.dotFieldT = Math.max(0.25, 1.1 - 0.22 * S.dotField);
+          igniteAround(P.x, P.y, dotFieldRadius(S.dotField),
+            1 + Math.floor(S.dotPerHit * 0.5));
+        }
+      }
+
       updateDrones(dt);
       updateOrbits(dt);
     },
 
     draw() {
       const ctx = G.ctx;
+
+      // 辐射场光环：让玩家看得见自己的辐射覆盖范围
+      const S = G.stats;
+      const P = G.player;
+      if (S && S.dotField > 0 && P && P.alive) {
+        const range = dotFieldRadius(S.dotField);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.10 + 0.045 * Math.sin(G.time * 3);
+        const g = ctx.createRadialGradient(P.x, P.y, range * 0.35, P.x, P.y, range);
+        g.addColorStop(0, 'rgba(150,230,90,0)');
+        g.addColorStop(0.75, 'rgba(150,230,90,0.35)');
+        g.addColorStop(1, 'rgba(190,255,120,0.85)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(P.x, P.y, range, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
 
       for (const d of state.drones) {
         if (d.x === undefined) continue;
@@ -1138,12 +1626,18 @@
       return clearNearbyBullets(x, y, radius, max);
     },
 
-    blastAround(x, y, radius, dmg) {
-      areaDamage(x, y, radius, dmg, 0);
+    blastAround(x, y, radius, dmg, opts) {
+      areaDamage(x, y, radius, dmg, 0, opts);
     },
 
     areaDamage,
     chainLightning,
+    igniteAround,
+    applyDot,
+    tickDot,
+    dotTickInterval,
+    pointDefRadius,
+    dotFieldRadius,
   };
 
   recalc();

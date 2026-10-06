@@ -50,6 +50,25 @@
         out.push({ label: '命中加成', value: '+' + hitBonus.toFixed(1) });
       }
 
+      // 舰队流：有僚机时才显示这一块
+      if ((S.drones || 0) > 0) {
+        out.push({ label: '僚机', value: '×' + S.drones });
+      }
+
+      // 辐射流（持续伤害）：拿到辐射源才显示（最多 4 行，仍然避开底部等级条）
+      if (S.dotActive) {
+        out.push({ label: '持续伤害', value: (S.dotPerStack || 0).toFixed(2) + '/层' });
+        out.push({ label: '每次叠层', value: '×' + (S.dotPerHit || 0) });
+        out.push({ label: '层数上限', value: String(S.dotMax || 0) });
+        if (S.dotCritChance > 0 || S.dotCritMul > 1.5) {
+          out.push({
+            label: 'DOT 暴击',
+            value: Math.round((S.dotCritChance || 0) * 100) + '% / ' +
+              Math.round((S.dotCritMul || 1) * 100) + '%',
+          });
+        }
+      }
+
       return out;
     },
 

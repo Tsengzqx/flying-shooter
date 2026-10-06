@@ -22,7 +22,7 @@
   const G = (window.Game = window.Game || {});
 
   const dmgAcc = new Map();   // key -> { x, y, sum, crit, t }
-  const state = { dps: 0, accum: 0, timer: 0 };
+  const state = { dps: 0, accum: 0, dotAccum: 0, timer: 0, ringT: 0 };
 
   /** 圆形碰撞检测 */
   function overlap(a, b) {
@@ -33,8 +33,9 @@
   }
 
   /** 记录一次命中：用于飘字与秒伤统计 */
-  function recordDamage(x, y, amount, isCrit, key) {
+  function recordDamage(x, y, amount, isCrit, key, type) {
     state.accum += amount;
+    if (type === 'dot') state.dotAccum += amount;
 
     const rec = dmgAcc.get(key);
     if (rec) {
@@ -43,7 +44,7 @@
       rec.x = x;
       rec.y = y;
     } else {
-      dmgAcc.set(key, { x, y, sum: amount, crit: isCrit, t: 0.34 });
+      dmgAcc.set(key, { x, y, sum: amount, crit: isCrit, type: type || 'bullet', t: 0.34 });
     }
   }
 
@@ -54,12 +55,14 @@
       if (rec.t > 0) return;
 
       if (G.particles && G.particles.text) {
+        // 持续伤害是独立伤害类型：用绿色 + "☣" 前缀，和子弹伤害一眼区分
+        const dot = rec.type === 'dot';
         G.particles.text(
           rec.x,
           rec.y - 18,
-          String(Math.round(rec.sum)),
-          rec.crit ? '#ffd166' : '#eaf6ff',
-          rec.crit ? 17 : 13
+          (dot ? '☣' : '') + String(Math.round(rec.sum)),
+          dot ? (rec.crit ? '#d8ff8a' : '#9ae66e') : (rec.crit ? '#ffd166' : '#eaf6ff'),
+          dot ? (rec.crit ? 16 : 12) : (rec.crit ? 17 : 13)
         );
       }
       dmgAcc.delete(key);
@@ -95,7 +98,11 @@
   function bulletEffects(e, S, x, y) {
     if (S.splash > 0) {
       const r = 34 + 12 * S.splash;
-      if (G.particles) G.particles.ring(x, y, '#c98cff', 6, 300);
+      // 溅射光环节流：避免高射速下满屏紫圈盖住弹幕
+      if (G.particles && state.ringT <= 0) {
+        G.particles.ring(x, y, '#c98cff', 5, 240);
+        state.ringT = 0.18;
+      }
       splash(e.uid, x, y, r, 0.45 * S.splash);
     }
 
@@ -110,29 +117,24 @@
     if (S.arc > 0 && G.upgrades && G.upgrades.chainLightning) {
       G.upgrades.chainLightning(x, y, 1, 1, 0.4 * S.arc);
     }
-
-    if (S.venom > 0) {
-      e.venomT = Math.min(6, e.venomT + 3);
-      e.venomDps = (e.venomDps || 0) + 0.22 * S.venom;
-      if (G.particles && Math.random() < 0.4) {
-        G.particles.spark(x, y, '#9ae66e');
-      }
-    }
   }
 
   G.combat = {
     state,
 
-    /** 供 boss.js 等模块上报伤害（飘字 + 秒伤统计） */
-    record(x, y, amount, isCrit, key) {
-      recordDamage(x, y, amount, isCrit, key || 'misc');
+    /** 供 boss.js 等模块上报伤害（飘字 + 秒伤统计）
+     *  @param {string} [type] 'dot' 表示持续伤害，飘字用绿色且加 ☣ 前缀 */
+    record(x, y, amount, isCrit, key, type) {
+      recordDamage(x, y, amount, isCrit, key || 'misc', type);
     },
 
     reset() {
       dmgAcc.clear();
       state.dps = 0;
       state.accum = 0;
+      state.dotAccum = 0;
       state.timer = 0;
+      state.ringT = 0;
     },
 
     update(dt) {
@@ -166,7 +168,11 @@
               dmg += G.upgrades.hitBonus();
             }
 
-            const isCrit = S.critChance > 0 && Math.random() < S.critChance;
+            // 暴击率：子弹自带就用子弹的（僚机半继承），否则用本体的
+            const critChance = (b.critChance === undefined || b.critChance === null)
+              ? (S.critChance || 0)
+              : b.critChance;
+            const isCrit = critChance > 0 && Math.random() < critChance;
             if (isCrit) dmg *= (S.critMul || 2);
 
             if (G.particles && G.particles.spark) {
@@ -235,6 +241,7 @@
       /* ---------- 伤害可视化 ---------- */
       flushDamage(dt);
       updateDps(dt);
+      if (state.ringT > 0) state.ringT -= dt;
     },
   };
 

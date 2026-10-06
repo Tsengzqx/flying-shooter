@@ -55,6 +55,9 @@
       spiralA: 0,
       minionCd: 5,
       hitFlash: 0,
+      dotStacks: 0,      // 辐射流：持续伤害层数（辐射/剧毒/燃烧合流）
+      dotT: 0,
+      dotTick: 0,
       dead: false,
       deathT: 0,
       sway: Math.random() * 6.28,
@@ -145,7 +148,7 @@
   /* ============================================================
      伤害与死亡
      ============================================================ */
-  function applyDamage(bs, baseDmg, x, y) {
+  function applyDamage(bs, baseDmg, x, y, critOverride) {
     const S = G.stats || {};
 
     let dmg = baseDmg || 1;
@@ -156,11 +159,20 @@
       dmg += G.upgrades.hitBonus();
     }
 
-    const isCrit = S.critChance > 0 && Math.random() < S.critChance;
+    // 暴击率：子弹自带就用子弹的（僚机半继承），否则用本体的
+    const critChance = (critOverride === undefined || critOverride === null)
+      ? (S.critChance || 0)
+      : critOverride;
+    const isCrit = critChance > 0 && Math.random() < critChance;
     if (isCrit) dmg *= (S.critMul || 2);
 
     bs.hp -= dmg;
     bs.hitFlash = 1;
+
+    // 持续伤害：Boss 也被常规子弹命中叠层（和杂兵同一套公式）
+    if (G.upgrades && G.upgrades.applyDot) {
+      G.upgrades.applyDot(bs, S.dotPerHit || 0);
+    }
 
     // 命中积累
     if (G.upgrades && G.upgrades.addHit) G.upgrades.addHit(1);
@@ -265,6 +277,35 @@
     bs.x = G.W / 2 + Math.sin(bs.t * (0.45 + bs.phase * 0.13) + bs.sway) * range;
     bs.y = ENTER_Y + Math.sin(bs.t * 1.3) * 8;
 
+    /* ---- 辐射流：Boss 同样吃持续伤害 ----
+       DOT 是一条独立伤害通道，必须能打 Boss，否则面对 Boss 时整个流派等于失效。 */
+    if (bs.dotStacks > 0 && G.upgrades && G.upgrades.tickDot) {
+      const R = G.upgrades.tickDot(bs, dt);
+
+      if (bs.hp > 0 && R.dmg > 0) {
+        bs.hitFlash = Math.max(bs.hitFlash, 0.35);
+        if (G.combat && G.combat.record) {
+          G.combat.record(bs.x, bs.y - 30, R.dmg, R.crit, 'dotboss', 'dot');
+        }
+      }
+
+      if (R.burst) {
+        if (G.particles) {
+          G.particles.sweep(bs.x, bs.y, R.burst.radius, '#b6ff6e', 0.45, 3);
+          G.particles.burst(bs.x, bs.y, { color: '#9ae66e', count: 22, speed: 320 });
+        }
+        if (G.upgrades.blastAround) {
+          G.upgrades.blastAround(bs.x, bs.y, R.burst.radius, R.burst.dmg,
+            { dot: true, flash: true });
+        }
+      }
+
+      if (bs.hp <= 0 && !bs.dead) {
+        kill(bs);
+        return;
+      }
+    }
+
     /* ---- 阶段切换 ---- */
     const ratio = bs.hp / bs.maxHp;
     const ph = ratio > 0.6 ? 1 : ratio > 0.28 ? 2 : 3;
@@ -328,7 +369,7 @@
     const rr = b.r + bs.r;
     if (dx * dx + dy * dy > rr * rr) return false;
 
-    applyDamage(bs, b.damage, b.x, b.y);
+    applyDamage(bs, b.damage, b.x, b.y, b.critChance);
     return true;
   }
 
@@ -451,6 +492,32 @@
       if (G.particles) {
         G.particles.spark(bs.x + (Math.random() - 0.5) * 90, bs.y + (Math.random() - 0.5) * 50, '#7a5a6a');
       }
+    }
+
+    // ---- 辐射流：绿色衰变光环 + 层数 ----
+    if (!bs.dead && bs.dotStacks > 0) {
+      const S = G.stats || {};
+      const k = S.dotMax > 0 ? Math.min(1, bs.dotStacks / S.dotMax) : 0;
+
+      ctx.globalAlpha = 0.18 + 0.4 * k;
+      ctx.fillStyle = '#9ae66e';
+      ctx.beginPath();
+      ctx.arc(0, 0, bs.r + 6 + 16 * k, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.globalAlpha = 0.75;
+      ctx.strokeStyle = '#c8ff9a';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, bs.r + 4 + 16 * k, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#e6ffcf';
+      ctx.font = '700 14px "Segoe UI", "Microsoft YaHei", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('☣' + bs.dotStacks, 0, -bs.r - 20);
     }
 
     // ---- 受击白闪 ----

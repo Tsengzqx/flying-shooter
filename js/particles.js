@@ -104,6 +104,24 @@
       });
     },
 
+    /**
+     * 范围指示环：从中心平滑扩散到**精确的** toRadius 再消失。
+     * 用来告诉玩家"刚才这一下清掉了多大范围"（点防系统等）。
+     */
+    sweep(x, y, toRadius, color, dur, width) {
+      push({
+        kind: 'sweep',
+        x, y,
+        r0: 6,
+        r: 6,
+        toR: toRadius,
+        life: dur || 0.42,
+        max: dur || 0.42,
+        color: color || '#9ad8ff',
+        w: width || 2.5,
+      });
+    },
+
     /* ---------- 飘字 ---------- */
     text(x, y, str, color, size) {
       push({
@@ -144,6 +162,10 @@
 
         if (p.kind === 'ring') {
           p.r += p.vr * dt;
+        } else if (p.kind === 'sweep') {
+          // 从 r0 平滑扩散到精确的 toR，玩家能据此判断清弹范围
+          const k = 1 - p.life / p.max;
+          p.r = p.r0 + (p.toR - p.r0) * k;
         } else if (p.kind !== 'bolt') {
           const d = Math.max(0, 1 - (p.drag || 0) * dt);
           p.vx *= d;
@@ -176,6 +198,20 @@
           ctx.globalAlpha = a * 0.8;
           ctx.strokeStyle = p.color;
           ctx.lineWidth = Math.max(0.5, p.w * a);
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+          ctx.stroke();
+        } else if (p.kind === 'sweep') {
+          // 外圈（范围边界）+ 内层柔光，边界清清楚楚
+          ctx.globalAlpha = a * 0.95;
+          ctx.strokeStyle = p.color;
+          ctx.lineWidth = p.w;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+          ctx.stroke();
+
+          ctx.globalAlpha = a * 0.22;
+          ctx.lineWidth = p.w * 4;
           ctx.beginPath();
           ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
           ctx.stroke();
