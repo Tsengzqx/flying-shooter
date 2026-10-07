@@ -549,15 +549,23 @@ Boss 血量 = `(160 + 关卡×60 ≤10关 / 760×1.20^(关−10) >10关) × 台�
 node tools/build.js
 ```
 
-会把整个游戏压成一个 **`dist/星际突袭.html`（约 213 KB）**，CSS 和 13 个 JS 模块全部内联，
-**零外部引用**。把这个文件直接发给对方（微信 / QQ / 邮件 / 网盘都行），**双击就能玩**。
+会把整个游戏压成一个 **`dist/星际突袭.html`（约 213 KB）**，CSS 和 14 个 JS 模块全部内联，
+**零外部引用**。注释会被压掉（但保留换行，所以报错行号和源码一致）。
+把这个文件直接发给对方（微信 / QQ / 邮件 / 网盘都行），**双击就能玩**。
+
+> 想打包带注释的版本（方便对着源码调试）：`node tools/build.js --keep-comments`
 
 > 单文件版已经用完整的 **498 项测试**验证过可以正常运行，不是"看起来对"。
 
 ### 方式 B：发源码压缩包
 
-`dist/flying-shooter-source.zip`（约 70 KB）包含 `index.html` + `css/` + `js/` + `README.md`。
+`dist/flying-shooter-source.zip`（约 123 KB，22 个文件）包含完整的可运行源码：
+`index.html` + `css/` + `js/` + `docs/` + `README.md` + `CHANGELOG.md` + `LICENSE`。
 对方解压后双击 `index.html` 即可 —— **不需要 `npm install`，不需要起服务器**。
+
+> 这个 zip 由 `node tools/build.js` **自动生成**，和单文件版同一次构建产出，
+> 所以不会出现"源码包是旧版本"的情况。
+> 内含的 `tools/` 开发脚本不在包里（图鉴页 `tools/boss-gallery.html` 需要的话要单独拿）。
 
 ### 方式 C：直接给网址（手机用户最方便）
 
