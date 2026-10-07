@@ -157,6 +157,101 @@ Game.lives = 3;
 Game.level = 1;
 Game.highScore = 0;
 
+/* ------------------------------------------------------------
+   三·二、跨局存档（localStorage）
+   ------------------------------------------------------------
+   只存小游戏需要的几个累计值；隐私模式下全部安全降级为 0。
+   ------------------------------------------------------------ */
+const SAVE_KEY = 'starstrike.stats';
+
+Game.save = {
+  bestLevel: 0,      // 到达过的最高关卡
+  bestScore: 0,      // 历史最高分（和 highScore 同步，便于统一读取）
+  totalKills: 0,     // 累计击杀
+  totalBosses: 0,    // 累计击破 Boss
+  runs: 0,           // 玩过多少局
+  _dirty: false,
+
+  load() {
+    try {
+      const raw = localStorage.getItem(SAVE_KEY);
+      if (raw) {
+        const o = JSON.parse(raw);
+        for (const k in o) {
+          if (typeof this[k] === 'number' && typeof o[k] === 'number' && isFinite(o[k])) {
+            this[k] = Math.max(0, Math.floor(o[k]));
+          }
+        }
+      }
+    } catch (e) { /* 忽略：损坏的存档不该让游戏起不来 */ }
+    return this;
+  },
+
+  persist() {
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify({
+        bestLevel: this.bestLevel,
+        bestScore: this.bestScore,
+        totalKills: this.totalKills,
+        totalBosses: this.totalBosses,
+        runs: this.runs,
+      }));
+    } catch (e) { /* 忽略 */ }
+  },
+
+  /** 一局开始时调用 */
+  startRun() {
+    this.runs++;
+    this.persist();
+  },
+
+  /** 击杀一个杂兵 */
+  recordKill(n) {
+    this.totalKills += (n || 1);
+    this._dirty = true;
+  },
+
+  /** 击破一个 Boss */
+  recordBoss() {
+    this.totalBosses++;
+    this._dirty = true;
+  },
+
+  /** 推进关卡 / 每局结束时更新记录 */
+  recordProgress(level, score) {
+    let changed = false;
+    if (level > this.bestLevel) { this.bestLevel = level; changed = true; }
+    if (score > this.bestScore) { this.bestScore = score; changed = true; }
+    if (changed || this._dirty) {
+      this._dirty = false;
+      this.persist();
+    }
+  },
+};
+
+Game.save.load();
+
+/* ------------------------------------------------------------
+   调试日志开关
+   ------------------------------------------------------------
+   13 个模块启动时各打一条日志，正式玩的时候纯属噪音。
+   默认关闭；想看就在网址后面加 ?debug（或控制台里设 Game.DEBUG = true）。
+   ------------------------------------------------------------ */
+Game.DEBUG = (function () {
+  try {
+    if (typeof location !== 'undefined' && location.search &&
+        /(?:^|[?&])debug(?:=|&|$)/.test(location.search)) return true;
+    if (typeof localStorage !== 'undefined' &&
+        localStorage.getItem('starstrike.debug') === '1') return true;
+  } catch (e) { /* 隐私模式等场景忽略 */ }
+  return false;
+})();
+
+/** 只在 DEBUG 打开时输出的日志（各模块统一用它） */
+Game.log = Game.DEBUG
+  ? function () { console.log.apply(console, arguments); }
+  : function () {};
+
 try {
   Game.highScore = parseInt(localStorage.getItem('starstrike.high') || '0', 10) || 0;
 } catch (e) {
@@ -245,6 +340,9 @@ Game.stats = {
   healOnLevelUp: 0,
   potential: 0,
   luck: 0,
+  /* 击破奖励：每击破一个 Boss，伤害 ×2（关卡进度乘区，子弹与 DOT 共享） */
+  bossKills: 0,
+  breakBonus: 1,
   /* 命中积累 */
   hitDamage: 0,          // 每次命中提供的伤害
   hitDamageCap: Infinity, // 无上限（保留字段便于面板显示）
@@ -332,7 +430,14 @@ const hud = {
       if (k === 'score') this.score.textContent = v.score.toLocaleString();
       else if (k === 'best') this.best.textContent = v.best.toLocaleString();
       else if (k === 'level') this.level.textContent = '第 ' + v.level + ' 关';
-      else if (k === 'lives') this.lives.textContent = v.lives > 0 ? '♥'.repeat(v.lives) : '—';
+      else if (k === 'lives') {
+        // 生命值可能被强化堆得很高，这里封顶 —— 否则 '♥'.repeat() 会把
+        // 字符串撑爆（RangeError: Invalid string length）并撑破 HUD
+        const n = Math.max(0, Math.min(999, Math.floor(v.lives) || 0));
+        this.lives.textContent = n === 0 ? '—'
+          : n <= 8 ? '♥'.repeat(n)
+            : '♥×' + n;
+      }
     }
   },
 
@@ -349,7 +454,7 @@ Game.hud = hud;
    ------------------------------------------------------------ */
 let toastTimer = 0;
 
-function toast(text) {
+function toast(text, ms) {
   const el = document.getElementById('toast');
   if (!el) return;
 
@@ -357,7 +462,7 @@ function toast(text) {
   el.classList.add('show');
 
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 1400);
+  toastTimer = setTimeout(() => el.classList.remove('show'), ms || 1400);
 }
 
 Game.toast = toast;
@@ -370,15 +475,24 @@ const screens = {
   pause: document.getElementById('screen-pause'),
   over: document.getElementById('screen-over'),
   upgrade: document.getElementById('screen-upgrade'),
+  codex: document.getElementById('screen-codex'),
 };
 
 function syncUI() {
   for (const k in screens) {
-    screens[k].classList.toggle('hidden', Game.screen !== k);
+    if (screens[k]) screens[k].classList.toggle('hidden', Game.screen !== k);
   }
-  // 主菜单时隐藏 HUD，其余时刻（含暂停/结算）保留
-  hud.el.classList.toggle('hidden', Game.state === 'menu');
+  // 主菜单时隐藏 HUD，其余时刻（含暂停/结算/图鉴）保留
+  hud.el.classList.toggle('hidden', Game.state === 'menu' || Game.screen === 'codex');
 }
+
+/** 切换到某个界面（图鉴等模块统一用它，避免各自去摸 DOM） */
+function showScreen(name) {
+  Game.screen = name || null;
+  syncUI();
+}
+
+Game.showScreen = showScreen;
 
 /* ------------------------------------------------------------
    六、流程控制
@@ -405,6 +519,7 @@ function startGame() {
   Game.state = 'playing';
   Game.screen = null;
   Game.startedAt = performance.now();   // 供 input.js 忽略"点击开始"那一下
+  Game.save.startRun();
   hud.invalidate();
   syncUI();
 }
@@ -423,15 +538,34 @@ function gameOver() {
     } catch (e) { /* 忽略写入失败 */ }
   }
 
+  // 跨局累计记录
+  Game.save.recordProgress(Game.level, Game.score);
+
   document.getElementById('over-score').textContent = Game.score.toLocaleString();
   document.getElementById('over-best').textContent = Game.highScore.toLocaleString();
   document.getElementById('over-record').classList.toggle('hidden', !isRecord);
+  renderSaveStats('over-stats', '本 局 战 绩');
 
   Game.screen = 'over';
   hud.update();
   syncUI();
 
   if (Game.audio && Game.audio.gameOver) Game.audio.gameOver();
+}
+
+/** 把跨局累计记录渲染进指定容器 */
+function renderSaveStats(id, caption) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const s = Game.save;
+  const cell = (k, v) => '<div class="stat"><span class="k">' + k + '</span>' +
+    '<span class="v">' + v + '</span></div>';
+  el.innerHTML =
+    (caption ? '<div class="stat-cap">' + caption + '</div>' : '') +
+    cell('最高关卡', '第 ' + s.bestLevel + ' 关') +
+    cell('累计击杀', s.totalKills.toLocaleString()) +
+    cell('击破 Boss', s.totalBosses) +
+    cell('游玩局数', s.runs);
 }
 
 /** 暂停 / 继续 */
@@ -460,6 +594,7 @@ function toMenu() {
 // 暴露给其它模块使用
 Game.startGame = startGame;
 Game.gameOver = gameOver;
+Game.renderSaveStats = renderSaveStats;
 Game.togglePause = togglePause;
 Game.toMenu = toMenu;
 Game.syncUI = syncUI;
@@ -595,7 +730,8 @@ function frame(now) {
 resize();
 Game.screen = 'menu';
 document.getElementById('menu-best').textContent = Game.highScore.toLocaleString();
+renderSaveStats('menu-stats');
 syncUI();
 requestAnimationFrame(frame);
 
-console.log('[星际突袭] 框架已就绪 · 第 ① 部分');
+Game.log('[星际突袭] 框架已就绪 · 第 ① 部分');

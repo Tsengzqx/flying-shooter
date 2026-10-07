@@ -236,5 +236,5 @@
     G.audio.toggleMute();
   });
 
-  console.log('[星际突袭] 音效引擎就绪（WebAudio 合成）');
+  G.log('[星际突袭] 音效引擎就绪（WebAudio 合成）');
 })();

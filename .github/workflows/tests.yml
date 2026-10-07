@@ -1,6 +1,7 @@
 name: tests
 
-# 每次 push / PR 都跑一遍 313 项冒烟测试（纯 Node，不需要浏览器）
+# 每次 push / PR 都跑一遍冒烟测试（纯 Node，不需要浏览器）
+# 测试条数不写死在这里，以 tools/smoke-test.js 跑出来的 RESULT 行为准
 on:
   push:
     branches: [main, master]

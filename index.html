@@ -43,7 +43,29 @@
       </div>
 
       <button id="btn-start" class="btn btn-primary">开 始 游 戏</button>
+      <button id="btn-codex" class="btn btn-ghost">图 鉴 · 玩 法</button>
       <p class="best-line">最高分 <span id="menu-best">0</span></p>
+      <div id="menu-stats" class="save-stats"></div>
+    </div>
+  </div>
+
+  <!-- ============ 图鉴 / 玩法 ============ -->
+  <div id="screen-codex" class="screen codex-screen hidden">
+    <div class="codex-box">
+      <div class="codex-head">
+        <h2 class="upgrade-title">图 鉴</h2>
+        <div class="codex-tabs">
+          <button class="tab on" data-tab="guide">玩法</button>
+          <button class="tab" data-tab="build">增益</button>
+          <button class="tab" data-tab="boss">Boss</button>
+        </div>
+      </div>
+
+      <div id="codex-body" class="codex-body"></div>
+
+      <div class="codex-foot">
+        <button id="btn-codex-close" class="btn btn-primary">返 回</button>
+      </div>
     </div>
   </div>
 
@@ -76,6 +98,8 @@
           <span id="over-best" class="val dim">0</span>
         </div>
       </div>
+
+      <div id="over-stats" class="save-stats"></div>
 
       <div class="btn-row">
         <button id="btn-restart" class="btn btn-primary">再 来 一 局</button>
@@ -117,5 +141,6 @@
 <script src="js/progress.js"></script>
 <script src="js/upgrades.js"></script>
 <script src="js/panel.js"></script>
+<script src="js/codex.js"></script>
 </body>
 </html>

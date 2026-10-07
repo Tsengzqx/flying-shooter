@@ -864,6 +864,10 @@
       } else if (list.length === 0 && !bossBusy) {
         wave.gap = 1.1;
         if (G.audio && G.audio.levelUp) G.audio.levelUp();
+        // 推进关卡时顺手记一下跨局进度（最高关卡）
+        if (G.save && G.save.recordProgress) {
+          G.save.recordProgress(wave.level, G.score);
+        }
       }
 
       updateEnemies(dt);
@@ -1015,6 +1019,9 @@
       // 经验
       if (G.progress && G.progress.addXp) G.progress.addXp(exp);
 
+      // 跨局累计击杀
+      if (G.save && G.save.recordKill) G.save.recordKill(1);
+
       // 击杀回调
       if (G.upgrades && G.upgrades.onKill) {
         G.upgrades.onKill(
@@ -1037,5 +1044,5 @@
     },
   };
 
-  console.log('[星际突袭] 敌机系统就绪 · ' + Object.keys(TYPES).length + ' 种机型 + 精英变异');
+  G.log('[星际突袭] 敌机系统就绪 · ' + Object.keys(TYPES).length + ' 种机型 + 精英变异');
 })();

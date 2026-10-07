@@ -37,6 +37,16 @@
   const ENTER_SPD = 100;                // 入场速度（px/s），约 2 秒到位
   const PHASE_MARKS = [0.6, 0.28];      // 二 / 三阶段的血量阈值
 
+  /* ------------------------------------------------------------
+     超时过载（兜底机制）
+     ------------------------------------------------------------
+     敌人血量是乘法增长，玩家伤害一度是加法增长，后期可能完全打不动。
+     这里给一个硬上限：Boss 战打满 OVERLOAD_AFTER 秒后进入「过载」，
+     之后每秒掉 2% 最大生命 —— 不管构筑多离谱，一场 Boss 战都会收束。
+     ------------------------------------------------------------ */
+  const OVERLOAD_AFTER = 600;           // 10 分钟
+  const OVERLOAD_PCT = 0.02;            // 每秒掉 2% 最大生命
+
   /* ============================================================
      一、Boss 花名册
      ------------------------------------------------------------
@@ -425,6 +435,9 @@
       cloaked: false,
       alpha: 1,
       hitFlash: 0,
+      fightT: 0,           // 本场 Boss 战已经打了多久（入场结束后开始计）
+      overload: false,     // 是否已进入过载
+      overT: 0,            // 过载已持续多久
       dotStacks: 0,      // 辐射流：持续伤害层数（辐射/剧毒/燃烧合流）
       dotT: 0,
       dotTick: 0,
@@ -451,14 +464,17 @@
   /* ============================================================
      四、伤害与死亡
      ============================================================ */
-  function applyDamage(bs, baseDmg, x, y, critOverride) {
+  function applyDamage(bs, baseDmg, x, y, critOverride, bonusOverride) {
     const S = G.stats || {};
 
     let dmg = baseDmg || 1;
     if (G.upgrades && G.upgrades.damageMultiplier) {
       dmg *= G.upgrades.damageMultiplier(bs);
     }
-    if (G.upgrades && G.upgrades.hitBonus) {
+    // 命中积累：僚机子弹自带 bonus（本体的 25%），其余用本体的
+    if (bonusOverride != null) {
+      dmg += bonusOverride;
+    } else if (G.upgrades && G.upgrades.hitBonus) {
       dmg += G.upgrades.hitBonus();
     }
 
@@ -511,12 +527,26 @@
     // Boss 经验
     if (G.progress && G.progress.addXp) G.progress.addXp(60 + bs.level * 5);
 
+    /* ---- 击破奖励：永久 +1 层，伤害 ×2（子弹与 DOT 同时提升） ---- */
+    let kills = 0;
+    if (G.upgrades && G.upgrades.addBossKill) kills = G.upgrades.addBossKill();
+    const bonus = (G.stats && G.stats.breakBonus) || 1;
+
     if (G.audio) G.audio.bossDie();
     if (G.shake) G.shake.add(22);
     if (G.particles) {
       G.particles.burst(bs.x, bs.y, { color: bs.def.pal.core, count: 50, speed: 420 });
       G.particles.text(bs.x, bs.y - 46, 'BOSS 击破 !', '#ffd166', 26);
     }
+
+    // 把"击破奖励生效"讲清楚，否则玩家不知道伤害为什么突然变高了
+    if (G.particles) {
+      G.particles.text(bs.x, bs.y - 22, '击破奖励　伤害 ×' + bonus.toFixed(0), '#9ae66e', 17);
+    }
+    if (G.toast) {
+      G.toast('击破奖励 '+ kills + ' 层　伤害 ×' + bonus.toFixed(0) + '（永久）', 2800);
+    }
+    if (G.save && G.save.recordBoss) G.save.recordBoss();
 
     // 掉落三个补给
     if (G.powerups && G.powerups.spawn) {
@@ -580,6 +610,40 @@
     const swayRate = bs.def.twist === 'blink' ? 0.62 : 0.45;
     bs.x = G.W / 2 + Math.sin(bs.t * (swayRate + bs.phase * 0.13) + bs.sway) * range;
     bs.y = ENTER_Y + Math.sin(bs.t * 1.3) * 8;
+
+    /* ---- 超时过载：打满 10 分钟就强制收束 ---- */
+    bs.fightT += dt;
+    if (!bs.overload && bs.fightT >= OVERLOAD_AFTER) {
+      bs.overload = true;
+      bs.overT = 0;
+      if (G.particles) {
+        G.particles.ring(bs.x, bs.y, '#ff5c7a', 30, 780);
+        G.particles.text(bs.x, bs.y - bs.r - 34, '核心过载 !', '#ff8a5c', 20);
+      }
+      if (G.shake) G.shake.add(18);
+      if (G.toast) G.toast(bs.def.name + ' 核心过载 —— 开始持续崩解', 2600);
+      if (G.audio && G.audio.bossWarn) G.audio.bossWarn();
+    }
+
+    if (bs.overload) {
+      bs.overT += dt;
+      const chip = bs.maxHp * OVERLOAD_PCT * dt;
+      bs.hp -= chip;
+
+      // 过载期间持续冒火花，视觉上明确"它在崩解"
+      if (G.particles && Math.random() < dt * 18) {
+        G.particles.spark(
+          bs.x + (Math.random() - 0.5) * bs.r * 1.8,
+          bs.y + (Math.random() - 0.5) * bs.r * 1.4,
+          '#ff8a5c'
+        );
+      }
+
+      if (bs.hp <= 0 && !bs.dead) {
+        kill(bs);
+        return;
+      }
+    }
 
     /* ---- 终焉之影：三阶段周期性隐身 ---- */
     if (bs.def.twist === 'cloak' && bs.phase >= 3) {
@@ -696,7 +760,7 @@
     const rr = b.r + bs.r;
     if (dx * dx + dy * dy > rr * rr) return false;
 
-    applyDamage(bs, b.damage, b.x, b.y, b.critChance);
+    applyDamage(bs, b.damage, b.x, b.y, b.critChance, b.bonus);
     return true;
   }
 
@@ -1163,6 +1227,24 @@
       ctx.fillText('☣' + bs.dotStacks, 0, -bs.r - 20);
     }
 
+    // ---- 超时过载：整体泛红 + 脉冲 ----
+    if (!bs.dead && bs.overload) {
+      const pu = 0.5 + 0.5 * Math.sin(bs.t * 9);
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = base * (0.25 + 0.35 * pu);
+      coreGlow(ctx, 0, 0, 118, '#ff5c7a', 1);
+      ctx.restore();
+
+      ctx.globalAlpha = base * (0.5 + 0.5 * pu);
+      ctx.strokeStyle = '#ff8a5c';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, bs.r + 10, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = base;
+    }
+
     // ---- 受击白闪 ----
     if (bs.hitFlash > 0) {
       ctx.globalAlpha = base * bs.hitFlash * 0.5;
@@ -1238,6 +1320,20 @@
     ctx.fillStyle = 'rgba(230,240,255,0.7)';
     ctx.fillText(Math.ceil(bs.hp) + ' / ' + bs.maxHp, x, y + 24);
 
+    // 血条下方的状态行：过载倒计时 / 过载中
+    const left = Math.max(0, OVERLOAD_AFTER - bs.fightT);
+    if (bs.overload) {
+      ctx.textAlign = 'right';
+      ctx.font = '700 10px "Segoe UI", "Microsoft YaHei", sans-serif';
+      ctx.fillStyle = '#ff8a5c';
+      ctx.fillText('核心过载 · 每秒崩解 ' + Math.round(OVERLOAD_PCT * 100) + '%', x + w, y + 24);
+    } else if (left <= 60) {
+      ctx.textAlign = 'right';
+      ctx.font = '700 10px "Segoe UI", "Microsoft YaHei", sans-serif';
+      ctx.fillStyle = '#ffb03a';
+      ctx.fillText('过载倒计时 ' + Math.ceil(left) + ' 秒', x + w, y + 24);
+    }
+
     // 边框
     ctx.textAlign = 'center';
     ctx.strokeStyle = 'rgba(' + pal.glow + ',0.7)';
@@ -1268,7 +1364,9 @@
     ROSTER,
     defAt,
     PHASE_MARKS,
+    OVERLOAD_AFTER,
+    OVERLOAD_PCT,
   };
 
-  console.log('[星际突袭] Boss 系统就绪 · ' + ROSTER.length + ' 种 Boss（每 10 关一个）');
+  G.log('[星际突袭] Boss 系统就绪 · ' + ROSTER.length + ' 种 Boss（每 10 关一个）');
 })();

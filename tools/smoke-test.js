@@ -89,6 +89,7 @@ function makeEl(id) {
     textContent: '',
     innerHTML: '',
     style: {},
+    dataset: {},
     width: 0,
     height: 0,
     handlers: {},
@@ -110,11 +111,23 @@ function makeEl(id) {
   };
 }
 
+/* 图鉴的标签页：querySelectorAll('#screen-codex .tab') 要能拿到真实的桩元素 */
+const codexTabs = ['guide', 'build', 'boss'].map((t) => {
+  const el = makeEl('tab-' + t);
+  el.dataset.tab = t;
+  return el;
+});
+
 const document = {
   getElementById(id) {
     if (!elements[id]) elements[id] = makeEl(id);
     return elements[id];
   },
+  querySelectorAll(sel) {
+    if (sel && sel.indexOf('.tab') !== -1) return codexTabs;
+    return [];
+  },
+  querySelector() { return null; },
   addEventListener: noop,
   createElement: (tag) => makeEl(tag),
 };
@@ -287,6 +300,7 @@ if (BUNDLE) {
     'js/progress.js',
     'js/upgrades.js',
     'js/panel.js',
+    'js/codex.js',
     'js/audio.js',
     'js/boss.js',
   ];
@@ -327,6 +341,11 @@ function ok(name, cond, extra) {
 }
 
 const G = sandbox.Game;
+
+/** 触发一个 window 事件（测试用：模拟改窗口尺寸等） */
+function fireWindow(type) {
+  (winListeners[type] || []).forEach((fn) => fn({ type }));
+}
 
 /**
  * 开一局并给玩家长无敌。
@@ -3460,7 +3479,328 @@ if (G.upgrades && G.bullets) {
   G.player.autoFire = true;
 }
 
-console.log('\n[37] 长时间稳定性（自动选强化 + 自动重开）');
+console.log('\n[37] 击破奖励 / 超时过载 / 存档 / 图鉴 / 面板自适应');
+if (G.upgrades && G.boss) {
+  const U = G.upgrades;
+  const S = G.stats;
+
+  /* ============================================================
+     ① 击破奖励：每杀一个 Boss，伤害 ×2，且子弹与 DOT 同时受益
+     ============================================================ */
+  startSafe();
+  U.owned.gen_power = 4;
+  U.owned.dot_core = 3;
+  U.recalc();
+  const dmg0 = S.damage;
+  const dot0 = S.dotPerStack;
+  ok('开局没有击破奖励', U.state.bossKills === 0 && Math.abs(S.breakBonus - 1) < 1e-9,
+    'kills=' + U.state.bossKills + ' bonus=' + S.breakBonus);
+
+  U.addBossKill();
+  ok('击破 1 个 Boss 后奖励生效', U.state.bossKills === 1 && Math.abs(S.breakBonus - 2) < 1e-9,
+    'bonus=' + S.breakBonus);
+  ok('击破奖励提升子弹伤害', Math.abs(S.damage - dmg0 * 2) < 1e-6,
+    dmg0.toFixed(2) + ' → ' + S.damage.toFixed(2));
+  ok('击破奖励同样提升持续伤害（DOT 不吃子弹加成，但吃关卡进度）',
+    Math.abs(S.dotPerStack - dot0 * 2) < 1e-9,
+    dot0.toFixed(3) + ' → ' + S.dotPerStack.toFixed(3));
+
+  U.addBossKill();
+  U.addBossKill();
+  ok('击破奖励可叠加（3 个 = ×8）',
+    U.state.bossKills === 3 && Math.abs(S.breakBonus - 8) < 1e-9,
+    'bonus=' + S.breakBonus);
+
+  startSafe();
+  ok('开新一局会清空击破奖励',
+    U.state.bossKills === 0 && Math.abs(G.stats.breakBonus - 1) < 1e-9,
+    'kills=' + U.state.bossKills);
+
+  // 击破一个真实 Boss 会自动加层
+  startSafe();
+  G.boss.reset();
+  G.boss.start(10);
+  const kb = G.boss.state.boss;
+  kb.entering = false;
+  kb.y = 112;
+  G.enemies.list.length = 0;
+  G.enemies.wave.queue.length = 0;
+  G.progress.state.need = Infinity;
+  const killsBefore = U.state.bossKills;
+  kb.hp = 3;
+  G.boss.tryHit({ x: kb.x, y: kb.y, r: 4, damage: 50, critChance: 0 });
+  ok('真实击破 Boss 会累加击破奖励', U.state.bossKills === killsBefore + 1,
+    killsBefore + ' → ' + U.state.bossKills);
+
+  /* ============================================================
+     ② 超时过载：打满 10 分钟开始按最大生命百分比掉血
+     ============================================================ */
+  ok('过载阈值是 10 分钟', G.boss.OVERLOAD_AFTER === 600,
+    'OVERLOAD_AFTER=' + G.boss.OVERLOAD_AFTER);
+  ok('过载每秒掉 2% 最大生命', Math.abs(G.boss.OVERLOAD_PCT - 0.02) < 1e-9,
+    'OVERLOAD_PCT=' + G.boss.OVERLOAD_PCT);
+
+  startSafe();
+  G.boss.reset();
+  G.boss.start(10);
+  const ob = G.boss.state.boss;
+  ob.entering = false;
+  ob.y = 112;
+  G.enemies.list.length = 0;
+  G.enemies.wave.queue.length = 0;
+  G.progress.state.need = Infinity;
+  G.player.invuln = 1e9;
+
+  // 还没到时间：不该掉血
+  ob.fightT = G.boss.OVERLOAD_AFTER - 1;
+  ob.hp = ob.maxHp;
+  const hpBeforeOver = ob.hp;
+  for (let i = 0; i < 30; i++) {
+    G.boss.update(0.016);
+    ob.fireCd = 1e9; ob.spiralT = 0; G.bullets.hostile.length = 0;
+    G.enemies.list.length = 0;
+  }
+  ok('没到 10 分钟不会过载', !ob.overload && ob.hp === hpBeforeOver,
+    'overload=' + ob.overload);
+
+  // 跨过阈值：应当开始持续掉血
+  ob.hp = ob.maxHp;
+  const hpAtOver = ob.hp;
+  let overFrames = 0;
+  for (let i = 0; i < 200; i++) {
+    G.boss.update(0.016);
+    ob.fireCd = 1e9; ob.spiralT = 0; G.bullets.hostile.length = 0;
+    G.enemies.list.length = 0;
+    if (ob.overload) overFrames++;
+  }
+  ok('打满 10 分钟进入过载', ob.overload === true, 'overload=' + ob.overload);
+  ok('过载后会持续掉血', ob.hp < hpAtOver,
+    hpAtOver.toFixed(0) + ' → ' + ob.hp.toFixed(0));
+
+  // 掉血速率：约 2%/秒
+  const lost = hpAtOver - ob.hp;
+  const seconds = overFrames * 0.016;
+  const rate = lost / Math.max(0.01, seconds) / hpAtOver;
+  ok('过载掉血速率约为每秒 2%', Math.abs(rate - 0.02) < 0.006,
+    '实测 ' + (rate * 100).toFixed(2) + '%/秒');
+
+  // 过载能把任何 Boss 收掉（用超大血量模拟后期）
+  startSafe();
+  G.boss.reset();
+  G.boss.start(10);
+  const bigBoss = G.boss.state.boss;
+  bigBoss.entering = false;
+  bigBoss.y = 112;
+  bigBoss.hp = 1e15;
+  bigBoss.maxHp = 1e15;
+  bigBoss.fightT = G.boss.OVERLOAD_AFTER;
+  G.enemies.list.length = 0;
+  G.enemies.wave.queue.length = 0;
+  G.progress.state.need = Infinity;
+  G.player.invuln = 1e9;
+  let guard = 0;
+  while (!bigBoss.dead && guard++ < 4000) {
+    G.boss.update(0.05);
+    bigBoss.fireCd = 1e9; bigBoss.spiralT = 0;
+    G.bullets.hostile.length = 0;
+    G.enemies.list.length = 0;
+  }
+  // 1e15 血、2%/秒 → 约 50 秒；这里给 4000×0.05=200 秒的余量
+  ok('过载能把血量天文数字的 Boss 收掉', bigBoss.dead === true,
+    'guard=' + guard + ' dead=' + bigBoss.dead);
+
+  /* ============================================================
+     ③ 舰队流：僚机吃命中积累，但只有本体的 25%
+     ============================================================ */
+  startSafe();
+  U.owned.fleet_drone = 2;
+  U.owned.gen_hitpower = 4;
+  U.recalc();
+  U.state.hits = 4000;                     // 造一个可观的命中积累
+
+  const bodyBonus = U.hitBonus();
+  const ds = U.droneStats();
+  ok('本体命中积累已生效', bodyBonus > 1, '本体加成 +' + bodyBonus.toFixed(2));
+  ok('僚机也吃命中积累', ds.hitBonus > 0, '僚机 +' + ds.hitBonus.toFixed(2));
+  ok('僚机只吃本体的 25%',
+    Math.abs(ds.hitBonus - bodyBonus * 0.25) < 1e-9,
+    '本体 +' + bodyBonus.toFixed(2) + ' → 僚机 +' + ds.hitBonus.toFixed(2));
+
+  // 真的作用到子弹上
+  G.bullets.reset();
+  U.syncSummons();
+  const dsProbe = U.droneStats();
+  G.bullets.spawnPlayer(240, 600, 0, -300, {
+    damage: dsProbe.damage, bonus: dsProbe.hitBonus, style: 'normal',
+  });
+  const droneBullet = G.bullets.friendly[0];
+  ok('僚机子弹带着自己的命中积累', droneBullet.bonus === dsProbe.hitBonus,
+    'bonus=' + droneBullet.bonus);
+
+  // 本体的子弹不带 bonus（走本体的命中积累）
+  G.bullets.reset();
+  G.player.autoFire = false;
+  G.player.shootVolley(S, 1);
+  const bodyBullet = G.bullets.friendly[0];
+  ok('本体子弹不带 bonus 字段（用本体的命中积累）',
+    bodyBullet.bonus === undefined, 'bonus=' + bodyBullet.bonus);
+  G.player.autoFire = true;
+
+  /* ============================================================
+     ④ 面板自适应：小窗口不压到底部经验条，也不盖住玩家
+     ============================================================ */
+  const oldH = sandbox.innerHeight;
+  const measure = (h) => {
+    sandbox.innerHeight = h;
+    fireWindow('resize');
+    const L = G.panel.layout();
+    return {
+      h: h,
+      panelBottom: G.panel.Y + L.h,
+      barY: G.H - 10,
+      playerY: G.H - Math.max(84, G.H * 0.15),
+      rows: L.rows.length,
+      all: L.all,
+      rowH: L.rowH,
+    };
+  };
+
+  // 把所有行都堆出来（命中积累 + 僚机 + DOT）
+  startSafe();
+  U.owned.gen_hitpower = 1;
+  U.owned.fleet_drone = 1;
+  U.owned.dot_core = 1;
+  U.owned.dot_crit = 1;
+  U.recalc();
+
+  const sizes = [1000, 800, 600, 500, 420, 360];
+  let overlapBar = null;
+  let overlapPlayer = null;
+  let clipped = 0;
+
+  for (const h of sizes) {
+    const m = measure(h);
+    if (m.panelBottom >= m.barY) overlapBar = h;
+    if (m.panelBottom > m.playerY) overlapPlayer = h;
+    if (m.rows < m.all) clipped++;
+  }
+
+  ok('任何窗口高度下面板都不会压到底部经验条', !overlapBar,
+    overlapBar ? 'H=' + overlapBar + ' 时压到了' : '全部 ' + sizes.join('/') + ' 都安全');
+  ok('任何窗口高度下面板都不会盖住玩家默认站位', !overlapPlayer,
+    overlapPlayer ? 'H=' + overlapPlayer + ' 时盖住了' : '全部安全');
+  ok('小窗口会自动截断部分行（而不是硬挤）', clipped > 0,
+    sizes.length + ' 种尺寸里有 ' + clipped + ' 种触发了截断');
+
+  const small = measure(360);
+  ok('极端小窗口下仍至少显示 4 行核心数据', small.rows >= 4,
+    'H=360 时显示 ' + small.rows + '/' + small.all + ' 行');
+  ok('截断时行高不低于可读下限', small.rowH >= 10,
+    'rowH=' + small.rowH.toFixed(1));
+
+  sandbox.innerHeight = oldH;
+  fireWindow('resize');
+  const restored = G.panel.layout();
+  ok('恢复窗口尺寸后行数回到完整', restored.rows.length === restored.all,
+    restored.rows.length + '/' + restored.all);
+
+  // 击破奖励要在面板上看得见
+  startSafe();
+  U.addBossKill();
+  const panelLabels = G.panel.rows().map((r) => r.label);
+  ok('面板显示击破奖励', panelLabels.indexOf('击破奖励') >= 0, panelLabels.join('/'));
+  startSafe();
+  ok('没击破过 Boss 时面板不显示该行',
+    G.panel.rows().map((r) => r.label).indexOf('击破奖励') === -1);
+
+  /* ============================================================
+     ⑤ 跨局存档
+     ============================================================ */
+  ok('存档对象已挂上', !!G.save && typeof G.save.load === 'function');
+
+  const before = {
+    runs: G.save.runs, kills: G.save.totalKills,
+    bosses: G.save.totalBosses, best: G.save.bestLevel,
+  };
+  G.save.startRun();
+  ok('开一局会累加游玩局数', G.save.runs === before.runs + 1,
+    before.runs + ' → ' + G.save.runs);
+
+  G.save.recordKill(5);
+  ok('击杀计数会累加', G.save.totalKills === before.kills + 5,
+    G.save.totalKills);
+
+  G.save.recordBoss();
+  ok('Boss 击破数会累加', G.save.totalBosses === before.bosses + 1,
+    G.save.totalBosses);
+
+  G.save.recordProgress(99, 12345);
+  ok('最高关卡会记录', G.save.bestLevel === 99, 'bestLevel=' + G.save.bestLevel);
+
+  G.save.recordProgress(3, 1);
+  ok('更低的关卡不会覆盖记录', G.save.bestLevel === 99, 'bestLevel=' + G.save.bestLevel);
+
+  let saveErr = null;
+  try {
+    G.save.persist();
+    G.save.load();
+  } catch (e) { saveErr = e; }
+  ok('存档读写不会抛异常', !saveErr, saveErr ? saveErr.message : '');
+
+  // 损坏的存档不能让游戏起不来
+  let brokenOk = true;
+  try {
+    localStorage.setItem('starstrike.stats', '{ 这不是 JSON');
+    G.save.load();
+  } catch (e) { brokenOk = false; }
+  ok('损坏的存档安全降级', brokenOk);
+
+  // 生命值显示封顶
+  let hudErr = null;
+  try {
+    G.hud.invalidate();
+    G.lives = 1e9;
+    G.hud.update();
+    G.lives = 3;
+    G.hud.invalidate();
+    G.hud.update();
+  } catch (e) { hudErr = e; }
+  ok('生命值显示不会因为数值过大而崩', !hudErr, hudErr ? hudErr.message : '');
+
+  /* ============================================================
+     ⑥ 图鉴
+     ============================================================ */
+  if (G.codex) {
+    ok('图鉴模块已加载', typeof G.codex.open === 'function');
+
+    let codexErr = null;
+    const sizes2 = {};
+    try {
+      for (const tab of G.codex.tabs) {
+        const html = G.codex.html[tab]();
+        sizes2[tab] = html.length;
+      }
+    } catch (e) { codexErr = e; }
+    ok('三个标签页都能生成内容', !codexErr, codexErr ? codexErr.message : '');
+    ok('玩法页有内容', sizes2.guide > 200, sizes2.guide + ' 字符');
+    ok('增益页列出了全部增益',
+      (G.codex.html.build().match(/cx-card /g) || []).length === G.upgrades.POOL.length,
+      '卡片数=' + (G.codex.html.build().match(/cx-card /g) || []).length +
+      ' / 增益数=' + G.upgrades.POOL.length);
+    ok('Boss 页列出了全部 Boss',
+      (G.codex.html.boss().match(/cx-code/g) || []).length === G.boss.ROSTER.length,
+      'Boss 卡片=' + (G.codex.html.boss().match(/cx-code/g) || []).length);
+
+    let openErr = null;
+    try { G.codex.open('boss'); G.codex.render('build'); G.codex.close(); }
+    catch (e) { openErr = e; }
+    ok('图鉴能打开 / 切页 / 关闭', !openErr, openErr ? openErr.message : '');
+  } else {
+    ok('图鉴模块已加载', false, '缺少 js/codex.js');
+  }
+}
+
+console.log('\n[38] 长时间稳定性（自动选强化 + 自动重开）');
 startSafe();
 
 let crashed = null;

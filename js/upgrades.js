@@ -436,6 +436,7 @@
     level: 0,
     kills: 0,
     hits: 0,
+    bossKills: 0,    // 本局击破的 Boss 数（驱动"击破奖励"）
     combo: 0,
     comboT: 0,
     revives: 0,
@@ -451,6 +452,16 @@
   const RARITY_WEIGHT = { common: 62, rare: 30, epic: 12, gold: 0.8 };
   const GOLD_UNLOCK = 8;      // 某流派累计多少层后解锁该流派的金色增益
   const DRONE_CAP = 20;        // 僚机数量上限
+
+  /* ------------------------------------------------------------
+     击破奖励（解决"敌人血量是指数、玩家伤害是加法"的发散）
+     ------------------------------------------------------------
+     敌人血量每 10 关要乘 ≈×9.7，而玩家的强化是加法的、还会很快点满，
+     后期必然追不上。所以这里给玩家一条**同样乘法增长**的曲线：
+     每击破一个 Boss，永久获得一层击破奖励，伤害 ×2（可叠加）。
+     它是一条独立的"关卡进度"乘区，同时作用于子弹和持续伤害两条通道。
+     ------------------------------------------------------------ */
+  const BREAK_STEP = 2.0;
   const DRONE_BASE_CD = 0.62;  // 僚机基础射击间隔（秒）
   const DRONE_MAX_BULLETS = 5; // 单架僚机每轮最多打几发（防止 20 架刷爆屏幕）
   const DRONE_FLEET_TAX = 0.035; // 僚机越多，单机射速略降（保持总输出可控）
@@ -512,6 +523,11 @@
     const items = itemCount();
     const plv = playerLevel();
     const gained = plv - 1;
+
+    /* ---------- 击破奖励：每击破一个 Boss，伤害 ×2（永久叠加） ----------
+       这是**关卡进度**乘区，不是子弹增益，所以子弹和 DOT 都会吃到它。 */
+    S.bossKills = state.bossKills;
+    S.breakBonus = Math.pow(BREAK_STEP, state.bossKills);
 
     /* ---------- 子弹类型：本体造型 + 元素光晕 ----------
        造型和元素拆开：以前拿了等离子弹，所有子弹都会变成又粗又紫的圆球，
@@ -651,6 +667,9 @@
     // 舰队流：僚机越多，本体越强（神经链接 / 旗舰指挥）
     dmg *= 1 + S.fleetBodyDamage;
 
+    // 击破奖励：关卡进度乘区（子弹通道）
+    dmg *= S.breakBonus;
+
     S.damage = Math.max(0.2, dmg);
     S.itemDamage = itemRate;
     S.levelDamage = levelRate;
@@ -722,6 +741,7 @@
         * (1 + 0.18 * lv('dot_venom'))
         * (lv('gold_dot_meltdown') > 0 ? 1.50 : 1)
         * (lv('gold_dot_singularity') > 0 ? 3 : 1)
+        * S.breakBonus              // 关卡进度乘区同样作用于 DOT
       : 0;
 
     S.dotPerHit = dotOn
@@ -1272,6 +1292,10 @@
       pierce: Math.round((S.pierce || 0) * k) + (S.dronePierce || 0),
       homing: droneTurn,
       homingCone: S.homingCone,
+      // 命中积累：僚机也吃，但只有本体的 25%（和数值继承同一个比例）
+      hitBonus: (S.hitDamage > 0 && G.upgrades && G.upgrades.hitBonus)
+        ? G.upgrades.hitBonus() * 0.25
+        : 0,
       // 只有拿了"精英护航"僚机才吃暴击（保持半继承的取舍感）
       critChance: (S.droneCrit || 0) > 0
         ? Math.min(1, (S.critChance || 0) * k + 0.25 * ((S.droneCrit || 1) - 1))
@@ -1338,6 +1362,7 @@
         pierce: ds.pierce,
         homing: ds.homing,
         homingCone: ds.homingCone,
+        bonus: ds.hitBonus,          // 僚机只吃 25% 命中积累
         style: ds.style,
         critChance: ds.critChance,
       };
@@ -1427,6 +1452,7 @@
       state.level = 0;
       state.kills = 0;
       state.hits = 0;
+      state.bossKills = 0;
       state.combo = 0;
       state.comboT = 0;
       state.revives = 0;
@@ -1624,6 +1650,16 @@
       state.hits += (n || 1);
     },
 
+    /**
+     * 击破一个 Boss：永久 +1 层击破奖励（伤害 ×BREAK_STEP）
+     * @returns {number} 累计击破数
+     */
+    addBossKill() {
+      state.bossKills++;
+      recalc();
+      return state.bossKills;
+    },
+
     /** 当前"命中积累"提供的额外伤害（无上限） */
     hitBonus() {
       const S = G.stats;
@@ -1657,6 +1693,6 @@
   };
 
   recalc();
-  console.log('[星际突袭] Roquelike 增益系统就绪 · 池子 ' + POOL.length +
+  G.log('[星际突袭] Roquelike 增益系统就绪 · 池子 ' + POOL.length +
     ' 个（含金色品质与流派倾向）');
 })();

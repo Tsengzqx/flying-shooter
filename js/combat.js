@@ -164,7 +164,10 @@
             if (G.upgrades && G.upgrades.damageMultiplier) {
               dmg *= G.upgrades.damageMultiplier(e);
             }
-            if (G.upgrades && G.upgrades.hitBonus) {
+            // 命中积累：僚机子弹自带 bonus（本体的 25%），其余用本体的
+            if (b.bonus != null) {
+              dmg += b.bonus;
+            } else if (G.upgrades && G.upgrades.hitBonus) {
               dmg += G.upgrades.hitBonus();
             }
 
@@ -245,5 +248,5 @@
     },
   };
 
-  console.log('[星际突袭] 战斗判定就绪');
+  G.log('[星际突袭] 战斗判定就绪');
 })();

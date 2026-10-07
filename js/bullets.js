@@ -325,10 +325,11 @@
 
     /**
      * 我方子弹
-     * @param {object} [opt] { r, damage, pierce, homing, homingCone, wave, ricochet, style, elems, critChance }
+     * @param {object} [opt] { r, damage, pierce, homing, homingCone, bonus, wave, ricochet, style, elems, critChance }
      *        style = 本体造型（normal/laser/heavy/rail）
      *        elems = 元素光晕列表（plasma/frost/venom），不再替换本体造型
      *        homing = 转向率（弧度/秒），homingCone = 索敌锥形半角
+     *        bonus = 固定加伤（僚机继承的命中积累）；不传则用本体的命中积累
      *        critChance 传了就覆盖本体的暴击率（僚机用得到）
      */
     spawnPlayer(x, y, vx, vy, opt) {
@@ -344,6 +345,7 @@
         homing: opt.homing || 0,
         homingCone: opt.homingCone,
         lock: null,                   // 当前锁定的目标（追踪用）
+        bonus: opt.bonus,             // undefined = 用本体的命中积累
         ricochet: opt.ricochet || 0,
         critChance: opt.critChance,   // undefined = 用本体的暴击率
         style: opt.style || 'normal',
@@ -383,5 +385,5 @@
     },
   };
 
-  console.log('[星际突袭] 子弹系统就绪');
+  G.log('[星际突袭] 子弹系统就绪');
 })();

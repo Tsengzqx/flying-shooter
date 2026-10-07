@@ -508,6 +508,175 @@ kbd {
 .chip.rarity-rare { border-color: rgba(86, 214, 255, .4); }
 .chip.rarity-epic { border-color: rgba(201, 140, 255, .5); color: #dcb6ff; }
 
+/* ============================================================
+   跨局战绩（主菜单 / 结算界面共用）
+   ============================================================ */
+.btn-ghost {
+  background: transparent;
+  border-color: rgba(120, 190, 255, .35);
+  color: #9dc0e4;
+  margin-bottom: 10px;
+}
+.btn-ghost:hover { background: rgba(60, 120, 200, .18); color: #d6ecff; }
+
+.save-stats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 14px;
+  margin: 12px auto 0;
+  max-width: 380px;
+}
+.save-stats .stat-cap {
+  font-size: 10px;
+  letter-spacing: 3px;
+  color: #5d7fa3;
+  flex-basis: 100%;
+  margin-bottom: 2px;
+}
+.save-stats .stat {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 11px;
+}
+.save-stats .stat .k { color: #5d7fa3; }
+.save-stats .stat .v { color: #bcd8f2; font-weight: 700; }
+
+/* ============================================================
+   图鉴 / 玩法
+   ============================================================ */
+.codex-screen { padding: 0; align-items: stretch; }
+
+.codex-box {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, rgba(6, 12, 24, .96), rgba(3, 6, 14, .98));
+}
+
+.codex-head {
+  flex: none;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid rgba(120, 190, 255, .18);
+  text-align: center;
+}
+.codex-head .upgrade-title { margin: 0 0 10px; font-size: 20px; }
+
+.codex-tabs { display: flex; justify-content: center; gap: 8px; }
+.codex-tabs .tab {
+  padding: 6px 18px;
+  border: 1px solid rgba(120, 190, 255, .25);
+  border-radius: 20px;
+  background: rgba(16, 34, 62, .7);
+  color: #9dc0e4;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.codex-tabs .tab:hover { background: rgba(30, 60, 105, .8); }
+.codex-tabs .tab.on {
+  background: rgba(42, 107, 214, .85);
+  border-color: #5aa0ff;
+  color: #fff;
+}
+
+.codex-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 16px 18px 24px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.codex-foot {
+  flex: none;
+  padding: 12px;
+  text-align: center;
+  border-top: 1px solid rgba(120, 190, 255, .18);
+  background: rgba(4, 8, 18, .9);
+}
+
+.cx-sec { margin: 0 auto 20px; max-width: 720px; }
+.cx-sec h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 8px;
+  font-size: 15px;
+  letter-spacing: 1px;
+  color: #dcefff;
+  border-left: 3px solid rgba(110, 231, 168, .8);
+  padding-left: 9px;
+}
+.cx-count {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 500;
+  color: #5d7fa3;
+  border: 1px solid rgba(120, 190, 255, .22);
+  border-radius: 20px;
+  padding: 1px 9px;
+}
+.cx-kv { font-size: 12.5px; color: #a9c6e4; line-height: 1.85; }
+.cx-kv b { color: #e8f4ff; }
+.cx-kv .hl { color: #ffc46b; }
+.cx-kv .c-swarm { color: #7fe0ff; }
+.cx-kv .c-item  { color: #ffc46b; }
+.cx-kv .c-level { color: #7bf0b4; }
+.cx-kv .c-fleet { color: #9db8ff; }
+.cx-kv .c-rad   { color: #86e05a; }
+.cx-num { color: #7fa8cc; font-size: 12px; }
+.cx-code { font-size: 11px; letter-spacing: 3px; color: #5d7fa3; margin-bottom: 4px; }
+.cx-empty { color: #5d7fa3; text-align: center; padding: 40px 0; }
+
+.cx-pip {
+  display: inline-block;
+  margin: 0 4px 4px 0;
+  padding: 1px 8px;
+  border: 1px solid rgba(255, 196, 107, .45);
+  border-radius: 20px;
+  font-size: 11px;
+  color: #ffc46b;
+}
+.cx-phase {
+  font-size: 12px;
+  color: #a9c6e4;
+  padding-left: 4px;
+}
+.cx-pi {
+  display: inline-block;
+  width: 18px;
+  color: #ffc46b;
+  font-weight: 700;
+}
+
+.cx-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 8px;
+}
+.cx-card {
+  border: 1px solid rgba(120, 190, 255, .18);
+  border-left-width: 3px;
+  border-radius: 7px;
+  background: rgba(10, 20, 38, .8);
+  padding: 8px 10px;
+}
+.cx-card.r-common { border-left-color: #6fa8d8; }
+.cx-card.r-rare   { border-left-color: #56d6ff; }
+.cx-card.r-epic   { border-left-color: #c98cff; }
+.cx-card.r-gold   { border-left-color: #ffd166; background: rgba(38, 28, 8, .8); }
+
+.cx-card-top { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.cx-icon { font-size: 16px; line-height: 1; }
+.cx-name { font-size: 13px; font-weight: 700; color: #e8f4ff; }
+.cx-rar { font-size: 10px; color: #7fa8cc; }
+.cx-max { margin-left: auto; font-size: 10px; color: #5d7fa3; }
+
+.cx-desc { font-size: 11.5px; color: #a9c6e4; line-height: 1.6; }
+.cx-delta { font-size: 11px; color: #7bf0b4; margin-top: 4px; line-height: 1.5; }
+
 /* ---------- 小屏适配 ---------- */
 @media (max-width: 720px) {
   .cards { grid-template-columns: 1fr; gap: 9px; max-height: 56vh; overflow-y: auto; }
@@ -518,6 +687,9 @@ kbd {
   .card-hot { position: static; width: auto; height: auto; padding: 0 6px; line-height: 18px; }
   .upgrade-sub { margin-bottom: 12px; }
   .owned { max-height: 62px; }
+
+  .cx-cards { grid-template-columns: 1fr; }
+  .codex-body { padding: 12px 12px 20px; }
 }
 
 @media (max-height: 560px) {
@@ -530,4 +702,10 @@ kbd {
   .upgrade-sub { margin-bottom: 10px; }
   .card { padding: 10px; }
   .card-icon { font-size: 24px; }
+
+  .codex-head { padding: 8px 12px 7px; }
+  .codex-head .upgrade-title { font-size: 16px; margin-bottom: 6px; }
+  .codex-tabs .tab { padding: 4px 14px; font-size: 12px; }
+  .codex-foot { padding: 7px; }
+  .save-stats { margin-top: 8px; }
 }
