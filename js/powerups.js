@@ -113,9 +113,12 @@
     },
 
     spawn(type, x, y) {
-      const def = TYPES[type] || TYPES.spread;
+      // 未知类型统一回退成 spread，并且**存归一化后的类型** ——
+      // 这样 apply() 拿到的永远是合法值，两边行为一致
+      // （局部变量叫 kind，避免和道具自己的动画计时字段 t 混淆）
+      const kind = TYPES[type] ? type : 'spread';
       list.push({
-        type,
+        type: kind,
         x,
         y,
         r: 15,
@@ -123,7 +126,7 @@
         t: Math.random() * 6,
         baseX: x,
         life: 16,          // 16 秒后自动消失
-        def,
+        def: TYPES[kind],
       });
     },
 
@@ -175,10 +178,15 @@
       const P = G.player;
       const S = G.stats || {};
 
+      /* spawn() 对未知类型是宽容的（回退成 spread），apply() 必须保持一致 ——
+         否则一个拼错的类型会让道具能掉、能捡，捡到的瞬间却直接崩掉整局。 */
+      const t = TYPES[type] ? type : 'spread';
+      const def = TYPES[t];
+
       // 道具流计数：装备强化的伤害就是靠这个叠起来的
       state.collected++;
 
-      if (type === 'heal') {
+      if (t === 'heal') {
         if (G.heal && G.heal(1)) {
           if (G.particles) G.particles.text(x, y - 10, '+1 生命', '#ff8fb0', 15);
         } else {
@@ -187,8 +195,8 @@
         }
         G.hud.invalidate();
       } else if (P && P.addPower) {
-        P.addPower(type, S.itemDurationMul || 1, S.itemQuality || 0);
-        if (G.particles) G.particles.text(x, y - 10, TYPES[type].label, TYPES[type].color, 15);
+        P.addPower(t, S.itemDurationMul || 1, S.itemQuality || 0);
+        if (G.particles) G.particles.text(x, y - 10, def.label, def.color, 15);
       }
 
       // 战地维修：概率回血
@@ -226,7 +234,7 @@
       if (G.upgrades && G.upgrades.addAlchemy) G.upgrades.addAlchemy(1);
 
       if (G.particles) {
-        G.particles.burst(x, y, { color: TYPES[type].color, count: 16, speed: 220 });
+        G.particles.burst(x, y, { color: def.color, count: 16, speed: 220 });
       }
       if (G.audio && G.audio.pickup) G.audio.pickup();
 

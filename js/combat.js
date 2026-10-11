@@ -55,14 +55,23 @@
       if (rec.t > 0) return;
 
       if (G.particles && G.particles.text) {
-        // 持续伤害是独立伤害类型：用绿色 + "☣" 前缀，和子弹伤害一眼区分
-        const dot = rec.type === 'dot';
+        // 伤害类型各有各的颜色，让玩家一眼看出这一下是什么打出来的
+        const type = rec.type;
+        const dot = type === 'dot';
+        const over = type === 'overload';
+        const color = dot ? (rec.crit ? '#d8ff8a' : '#9ae66e')
+          : over ? (rec.crit ? '#ffc09a' : '#ff8a5c')
+            : (rec.crit ? '#ffd166' : '#eaf6ff');
+        const size = dot ? (rec.crit ? 16 : 12)
+          : over ? 11
+            : (rec.crit ? 17 : 13);
+
         G.particles.text(
           rec.x,
           rec.y - 18,
-          (dot ? '☣' : '') + String(Math.round(rec.sum)),
-          dot ? (rec.crit ? '#d8ff8a' : '#9ae66e') : (rec.crit ? '#ffd166' : '#eaf6ff'),
-          dot ? (rec.crit ? 16 : 12) : (rec.crit ? 17 : 13)
+          (dot ? '☣' : over ? '⏱' : '') + String(Math.round(rec.sum)),
+          color,
+          size
         );
       }
       dmgAcc.delete(key);
@@ -80,17 +89,31 @@
     state.timer = 0.25;
   }
 
-  /** 等离子弹溅射：对目标以外的敌人造成范围伤害 */
+  /**
+   * 等离子弹溅射：对目标以外的敌人造成范围伤害
+   *
+   * ⚠️ 和 upgrades.areaDamage 一样，必须**先快照、再结算**：
+   *    E.damage() 会把敌人从列表里移除，而击杀会触发爆裂弹的 onKill，
+   *    一次连环爆炸能让列表在中途缩短好几格，用下标继续遍历就会
+   *    读到 undefined 崩在 en.uid 上。
+   */
   function splash(uid, x, y, radius, dmg) {
     const E = G.enemies;
     if (!E) return;
 
-    for (let j = E.list.length - 1; j >= 0; j--) {
+    const hit = [];
+    for (let j = 0; j < E.list.length; j++) {
       const en = E.list[j];
+      if (!en) continue;
       if (en.uid === uid) continue;
-      if (Math.hypot(en.x - x, en.y - y) <= radius + en.r) {
-        E.damage(j, dmg, { depth: 1 });
-      }
+      if (Math.hypot(en.x - x, en.y - y) <= radius + en.r) hit.push(en);
+    }
+
+    for (let k = 0; k < hit.length; k++) {
+      const en = hit[k];
+      if (en.alive === false || en.hp <= 0) continue;
+      const idx = E.list.indexOf(en);
+      if (idx !== -1) E.damage(idx, dmg, { depth: 1 });
     }
   }
 

@@ -1,6 +1,6 @@
 name: tests
 
-# 每次 push / PR 都跑一遍冒烟测试（纯 Node，不需要浏览器）
+# 每次 push / PR 都跑一遍测试（纯 Node，不需要浏览器）
 # 测试条数不写死在这里，以 tools/smoke-test.js 跑出来的 RESULT 行为准
 on:
   push:
@@ -23,6 +23,12 @@ jobs:
 
       - name: 运行冒烟测试
         run: node tools/smoke-test.js
+
+      - name: 不变量模糊测试（随机构筑 + 随机输入）
+        run: node tools/fuzz.js 20261006 15 1800
+
+      - name: 生命周期混沌测试（随机暂停 / 送死 / 重开 / 拾取）
+        run: node tools/chaos.js 424242 120
 
       - name: 构建单文件版并验证产物
         run: |

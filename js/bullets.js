@@ -25,6 +25,34 @@
   const OFF = 60;
 
   /**
+   * 「细线模式」阈值：同屏我方子弹超过这个数，就省掉外圈光环与拖尾，
+   * 只画一根细线来保住帧率。颜色仍然逐颗保留（见 lineColor）。
+   * 弹幕流后期实测能到 1500 发，所以这个降级是必须的。
+   */
+  const BULLET_LINE_MODE = 180;
+
+  /** 元素光晕的纯色版：细线模式下用它保留元素身份 */
+  const ELEMENT_LINE = {
+    plasma: '#d9b6ff',
+    frost: '#a8ecff',
+    venom: '#b6f57a',
+    ember: '#ffb060',
+  };
+  const CORE_LINE = {
+    normal: '#eafcff',
+    laser: '#dff8ff',
+    heavy: '#fff0c8',
+    rail: '#ffffff',
+  };
+
+  /** 细线模式下这颗子弹该用什么颜色 */
+  function lineColor(b) {
+    const e = b.elems;
+    if (e && e.length) return ELEMENT_LINE[e[0]] || CORE_LINE[b.style] || '#eafcff';
+    return CORE_LINE[b.style] || '#eafcff';
+  }
+
+  /**
    * 子弹半径下限。
    * 微型弹 / 激光 / 轨道弹叠起来会把体积压到几乎看不见，
    * 所以判定半径和绘制尺寸都不允许低于这个值。
@@ -283,12 +311,15 @@
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
 
-      // 弹幕流叠起来子弹会非常多，超过阈值就统一画成细线保帧率
-      const many = friendly.length > 140;
+      /* 弹幕流叠起来子弹会非常多，超过阈值就改成细线（省掉外圈光环与拖尾）保帧率。
+         但**保留每颗子弹的颜色** —— 否则堆到上千发时全场是同一种白线，
+         玩家完全看不出自己拿的是等离子 / 霜冻 / 剧毒。
+         实测这几乎不增加开销（本来就要逐颗设置 strokeStyle）。 */
+      const many = friendly.length > BULLET_LINE_MODE;
 
       for (const b of friendly) {
         if (many) {
-          ctx.strokeStyle = '#eafcff';
+          ctx.strokeStyle = lineColor(b);
           ctx.lineWidth = Math.max(MIN_LINE, b.r * 0.9);
           ctx.lineCap = 'round';
           ctx.beginPath();

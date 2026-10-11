@@ -65,6 +65,23 @@ function makeCtx() {
   };
   c.measureText = () => ({ width: 10 });
 
+  /* 属性赋值也要记录 —— 颜色是靠 ctx.strokeStyle = ... 设的（不是方法调用），
+     不记的话根本看不出"这一帧用了哪几种颜色"。 */
+  ['strokeStyle', 'fillStyle', 'lineWidth', 'lineCap', 'font',
+    'globalAlpha', 'globalCompositeOperation', 'shadowColor', 'shadowBlur']
+    .forEach((k) => {
+      let v = c[k];
+      Object.defineProperty(c, k, {
+        get() { return v; },
+        set(nv) {
+          v = nv;
+          if (c.__rec) c.__ops.push(k + '=' + nv);
+        },
+        enumerable: true,
+        configurable: true,
+      });
+    });
+
   /** 开始录制 */
   c.__begin = function () { c.__ops.length = 0; c.__rec = true; };
   /** 结束录制并返回指纹 */
@@ -3800,7 +3817,288 @@ if (G.upgrades && G.boss) {
   }
 }
 
-console.log('\n[38] 长时间稳定性（自动选强化 + 自动重开）');
+console.log('\n[38] 回归：近期修掉的 Bug');
+if (G.boss && G.powerups) {
+  /* ============================================================
+     ① 虚空掠夺者的"瞬移"曾经完全无效
+     ------------------------------------------------------------
+     blink() 直接改 bs.x，但 update() 每帧都会用游走公式重算 bs.x，
+     赋值下一帧就被覆盖 —— 等于它只是随机换了个游标相位。
+     现在改成反解 sway，落点才留得住。
+     ============================================================ */
+  startSafe();
+  G.boss.reset();
+  G.boss.start(20);
+  const bl = G.boss.state.boss;
+  ok('第 20 关是虚空掠夺者（blink 机制）',
+    bl.def.twist === 'blink', 'twist=' + bl.def.twist);
+
+  bl.entering = false;
+  bl.y = 112;
+  G.enemies.list.length = 0;
+  G.enemies.wave.queue.length = 0;
+  G.progress.state.need = Infinity;
+  G.player.invuln = 1e9;
+  G.player.autoFire = false;      // 别把 Boss 打死，专测位移
+
+  let jumps = 0;
+  let switched = 0;
+  const mid = G.W / 2;
+  for (let i = 0; i < 1600; i++) {
+    const before = bl.x;
+    if (i % 4 === 0) bl.fireCd = 0.001;   // 稳定触发开火 → blink
+    step(16);
+    bl.fireCd = 1e9;
+    bl.spiralT = 0;
+    G.bullets.hostile.length = 0;
+    G.enemies.list.length = 0;
+    G.progress.state.need = Infinity;
+    G.player.invuln = 1e9;
+    if (!G.boss.state.boss) break;
+
+    const after = bl.x;
+    if (Math.abs(after - before) > 60) {
+      jumps++;
+      if ((before < mid) !== (after < mid)) switched++;
+    }
+  }
+
+  ok('虚空掠夺者真的会瞬移（落点留得住）', jumps > 5,
+    '1600 帧里瞬移 ' + jumps + ' 次');
+  ok('瞬移基本都会换到另一侧', switched > jumps * 0.8,
+    '换侧 ' + switched + ' / 共 ' + jumps);
+
+  // 对照：没有 blink 机制的 Boss 不该乱跳
+  startSafe();
+  G.boss.reset();
+  G.boss.start(10);
+  const hive = G.boss.state.boss;
+  hive.entering = false;
+  hive.y = 112;
+  hive.hp = hive.maxHp;
+  G.enemies.list.length = 0;
+  G.enemies.wave.queue.length = 0;
+  G.progress.state.need = Infinity;
+  G.player.invuln = 1e9;
+  G.player.autoFire = false;
+  // 先热身几帧：start() 把 x 放在正中，第一帧游走公式会把它挪到摆动位置，
+  // 那一次位移不算"乱跳"
+  for (let i = 0; i < 30; i++) {
+    step(16);
+    hive.hp = hive.maxHp;
+    hive.fireCd = 1e9;
+    G.bullets.hostile.length = 0;
+    G.enemies.list.length = 0;
+    G.progress.state.need = Infinity;
+    G.player.invuln = 1e9;
+  }
+  let hiveJumps = 0;
+  for (let i = 0; i < 800; i++) {
+    const before = hive.x;
+    step(16);
+    hive.hp = hive.maxHp;
+    hive.fireCd = 1e9;
+    G.bullets.hostile.length = 0;
+    G.enemies.list.length = 0;
+    G.progress.state.need = Infinity;
+    G.player.invuln = 1e9;
+    if (!G.boss.state.boss) break;
+    if (Math.abs(hive.x - before) > 60) hiveJumps++;
+  }
+  ok('没有瞬移机制的 Boss 不会乱跳', hiveJumps === 0,
+    '钢铁蜂巢大跳 ' + hiveJumps + ' 次');
+
+  /* ============================================================
+     ② 道具 apply() 曾经不认识"未知类型"
+     ------------------------------------------------------------
+     spawn() 对未知类型是宽容的（回退 spread），apply() 却直接
+     TYPES[type].label —— 一个宽容一个严格，配错就崩整局。
+     ============================================================ */
+  startSafe();
+  G.powerups.reset();
+
+  let spawnErr = null;
+  try {
+    G.powerups.spawn('这个类型根本不存在', G.W / 2, 100);
+  } catch (e) { spawnErr = e; }
+  ok('未知道具类型也能安全生成', !spawnErr, spawnErr ? spawnErr.message : '');
+
+  const odd = G.powerups.list[0];
+  ok('未知类型被归一化成 spread', !!odd && odd.type === 'spread',
+    odd ? 'type=' + odd.type : '没有生成');
+
+  let applyErr = null;
+  try {
+    G.powerups.apply('这个类型根本不存在', G.W / 2, 100);
+  } catch (e) { applyErr = e; }
+  ok('未知道具类型也能安全拾取（回归）', !applyErr,
+    applyErr ? applyErr.message : '');
+
+  let applyErr2 = null;
+  try {
+    G.powerups.apply('spread', G.W / 2, 100);
+    G.powerups.apply('heal', G.W / 2, 100);
+  } catch (e) { applyErr2 = e; }
+  ok('正常类型的拾取依然没问题', !applyErr2, applyErr2 ? applyErr2.message : '');
+
+  /* ============================================================
+     ③ 主菜单的累计战绩曾经不会刷新
+     ============================================================ */
+  const menuEl = sandbox.document.getElementById('menu-stats');
+  const runsBefore = G.save.runs;
+  startSafe();                       // 开一局 → runs+1
+  G.level = 7;
+  G.score = 1234;
+  G.toMenu();
+  const shown = menuEl.innerHTML;
+  ok('回主菜单会刷新累计战绩',
+    shown.indexOf('游玩局数') >= 0 && shown.indexOf(String(runsBefore + 1)) >= 0,
+    'runs 应为 ' + (runsBefore + 1));
+  ok('中途退出也计入最高关卡', G.save.bestLevel >= 7,
+    'bestLevel=' + G.save.bestLevel);
+
+  /* ============================================================
+     ④ 过载掉血要有飘字（不能血条凭空消失）
+     ============================================================ */
+  startSafe();
+  G.boss.reset();
+  G.boss.start(10);
+  const ob = G.boss.state.boss;
+  ob.entering = false;
+  ob.y = 112;
+  ob.fightT = G.boss.OVERLOAD_AFTER;
+  ob.hp = ob.maxHp;
+  G.enemies.list.length = 0;
+  G.enemies.wave.queue.length = 0;
+  G.progress.state.need = Infinity;
+  G.player.invuln = 1e9;
+  G.combat.reset();
+  G.particles.clear();
+  for (let i = 0; i < 40; i++) {
+    G.boss.update(0.05);
+    ob.fireCd = 1e9; ob.spiralT = 0;
+    G.bullets.hostile.length = 0;
+    G.enemies.list.length = 0;
+  }
+  // 飘字是"聚合 0.34 秒再弹一次"，所以要推动 combat 的结算
+  G.combat.update(0.4);
+  const overTexts = G.particles.list.filter((p) => p.kind === 'text' &&
+    String(p.str).indexOf('⏱') === 0);
+  ok('过载掉血会弹出 ⏱ 飘字', overTexts.length > 0,
+    '找到 ' + overTexts.length + ' 条过载飘字');
+
+  /* ============================================================
+     ⑤ 细线模式要保留元素颜色
+     ============================================================ */
+  startSafe();
+  G.bullets.reset();
+  const mk = (opts) => {
+    G.bullets.spawnPlayer(100, 600, 0, -400, opts);
+    return G.bullets.friendly[G.bullets.friendly.length - 1];
+  };
+  const plasmaB = mk({ style: 'normal', elems: ['plasma'] });
+  ok('子弹记录了元素列表', !!plasmaB.elems && plasmaB.elems[0] === 'plasma',
+    JSON.stringify(plasmaB.elems));
+
+  // 超过阈值后走细线分支，颜色必须仍然区分得开
+  G.bullets.reset();
+  for (let i = 0; i < 200; i++) {
+    mk(i % 2 ? { style: 'normal', elems: ['plasma'] } : { style: 'normal' });
+  }
+  ok('子弹数已超过细线模式阈值', G.bullets.friendly.length > 180,
+    '子弹 ' + G.bullets.friendly.length + ' 发');
+
+  let drawErr = null;
+  try {
+    ctx2d.__begin();
+    G.bullets.draw();
+    ctx2d.__end();
+  } catch (e) { drawErr = e; }
+  ok('高弹幕量下绘制不报错', !drawErr, drawErr ? drawErr.message : '');
+
+  // 细线模式下应该出现多种描边色（而不是清一色白）
+  ctx2d.__begin();
+  G.bullets.draw();
+  const ops = ctx2d.__end();
+  /* ============================================================
+     ⑥ 连环爆炸曾经 100% 崩溃（本项目最严重的一个 bug）
+     ------------------------------------------------------------
+     areaDamage / splash 都是"边遍历下标边打伤害"，而 E.damage 会 splice
+     列表、击杀又会递归触发爆裂弹的 onKill —— 一次连环爆炸能把列表一口气
+     缩短好几格，外层循环手里的下标立刻失效，E.list[j] 变成 undefined，
+     崩在 en.x / en.uid 上。
+     现在改成"先快照目标、再逐个结算"，下标每次重新查。
+     ============================================================ */
+  const cluster = (n) => {
+    G.enemies.list.length = 0;
+    G.enemies.wave.queue.length = 0;
+    G.progress.state.need = Infinity;
+    for (let i = 0; i < n; i++) {
+      const e = G.enemies.spawn('scout', G.W / 2 + (i % 6) * 5, { noElite: true });
+      e.x = G.W / 2 + (i % 6) * 5;
+      e.baseX = e.x;
+      e.y = 240 + Math.floor(i / 6) * 5;
+      e.vy = 0;
+      e.hp = 1;                       // 一碰就死，保证连环触发
+      e.maxHp = 1;
+      e.fireCd = 1e9;
+    }
+    return G.enemies.list.length;
+  };
+
+  // 直接打爆中间那只 → onKill → 爆裂弹 → 递归 areaDamage
+  let chainErr = null;
+  let before = 0;
+  let after = 0;
+  try {
+    startSafe();
+    G.upgrades.owned.gen_explode = 4;
+    G.upgrades.owned.gen_chain = 1;
+    G.upgrades.recalc();
+    before = cluster(26);
+    G.enemies.damage(Math.floor(before / 2), 5, {});
+    after = G.enemies.list.length;
+  } catch (e) { chainErr = e; }
+  ok('连环爆炸（爆裂弹）不再崩溃', !chainErr,
+    chainErr ? chainErr.message : '');
+  ok('连环爆炸确实炸掉了一大片', before >= 20 && after < before / 2,
+    before + ' 只 → ' + after + ' 只');
+
+  // 等离子弹溅射走的是另一条路径（combat.splash），同样要扛得住
+  let splashErr = null;
+  try {
+    startSafe();
+    G.upgrades.owned.gen_explode = 4;
+    G.upgrades.owned.gen_plasma = 3;
+    G.upgrades.recalc();
+    const n = cluster(26);
+    const mid = G.enemies.list[Math.floor(n / 2)];
+    G.bullets.reset();
+    G.bullets.spawnPlayer(mid.x, mid.y, 0, -200, {
+      r: 4, damage: 9, style: 'normal', elems: ['plasma'],
+    });
+    for (let i = 0; i < 6; i++) step(16);
+  } catch (e) { splashErr = e; }
+  ok('等离子溅射 + 连环爆炸也不再崩溃', !splashErr,
+    splashErr ? splashErr.message : '');
+
+  // 反复来几轮，排除"只在下标恰好落在某处时才崩"的偶发
+  let repeatErr = null;
+  try {
+    for (let round = 0; round < 12; round++) {
+      startSafe();
+      G.upgrades.owned.gen_explode = 4;
+      G.upgrades.recalc();
+      const n = 10 + round;
+      cluster(n);
+      G.enemies.damage((round * 3) % n, 5, {});
+    }
+  } catch (e) { repeatErr = e; }
+  ok('不同下标/规模下反复连环爆炸都安全', !repeatErr,
+    repeatErr ? repeatErr.message : '12 轮全部通过');
+}
+
+console.log('\n[39] 长时间稳定性（自动选强化 + 自动重开）');
 startSafe();
 
 let crashed = null;

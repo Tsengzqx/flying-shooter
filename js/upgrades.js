@@ -1039,20 +1039,39 @@
      ============================================================ */
   /**
    * 范围伤害
+   *
+   * ⚠️ 必须**先快照命中的目标、再逐个结算**，不能边遍历下标边打伤害：
+   *    `E.damage()` 会把敌人从列表里 splice 掉，而击杀又会触发 onKill，
+   *    爆裂弹的 onKill 就是再调一次 areaDamage —— 一次连环爆炸会把列表
+   *    一口气缩短好几格。此时外层循环手里的下标就失效了，
+   *    `E.list[j]` 变成 undefined，直接崩在 `en.x` 上。
+   *    （实测：爆裂弹 + 26 只挤在一起的敌机 = 100% 崩溃）
+   *
    * @param {object} [opts] 透传给 enemies.damage / boss.areaDamage
    *        { dot: true } 表示"这笔伤害来自 DOT"，不再叠加 DOT 层数（否则会自我循环）
    */
   function areaDamage(x, y, radius, dmg, depth, opts) {
     const o = { depth: depth, dot: !!(opts && opts.dot), flash: !!(opts && opts.flash) };
     const E = G.enemies;
+
     if (E) {
-      for (let j = E.list.length - 1; j >= 0; j--) {
+      // ① 先记下"这一炮打到了谁"（存对象引用，不存下标）
+      const hit = [];
+      for (let j = 0; j < E.list.length; j++) {
         const en = E.list[j];
-        if (Math.hypot(en.x - x, en.y - y) <= radius + en.r) {
-          E.damage(j, dmg, o);
-        }
+        if (!en) continue;
+        if (Math.hypot(en.x - x, en.y - y) <= radius + en.r) hit.push(en);
+      }
+
+      // ② 再逐个结算：位置每次重新查，已经被前面的爆炸带走的就跳过
+      for (let k = 0; k < hit.length; k++) {
+        const en = hit[k];
+        if (en.alive === false || en.hp <= 0) continue;
+        const idx = E.list.indexOf(en);
+        if (idx !== -1) E.damage(idx, dmg, o);
       }
     }
+
     if (G.boss && G.boss.areaDamage) G.boss.areaDamage(x, y, radius, dmg, opts);
   }
 
@@ -1071,6 +1090,7 @@
 
       for (let j = 0; j < E.list.length; j++) {
         const en = E.list[j];
+        if (!en) continue;                       // 列表可能被上一跳的击杀改动过
         if (used.indexOf(en.uid) !== -1) continue;
         const d = (en.x - cx) * (en.x - cx) + (en.y - cy) * (en.y - cy);
         if (d < bestD) { bestD = d; best = j; }
@@ -1079,6 +1099,7 @@
       if (best < 0 || bestD > 280 * 280) break;
 
       const en = E.list[best];
+      if (!en) break;
       if (G.particles) G.particles.bolt(cx, cy, en.x, en.y, '#9ad8ff');
 
       used.push(en.uid);
@@ -1321,6 +1342,7 @@
 
     for (let i = 0; i < n; i++) {
       const d = state.drones[i];
+      if (!d) continue;              // 防御：数组被别处改动过就跳过
 
       // V 字编队：左右分列，越靠后的僚机越往外、越靠后
       const side = i % 2 === 0 ? -1 : 1;
@@ -1394,6 +1416,7 @@
 
     for (let i = 0; i < n; i++) {
       const o = state.orbits[i];
+      if (!o) continue;              // 防御：数组被别处改动过就跳过
       const a = state.orbitAngle + i * (Math.PI * 2 / n);
       o.x = P.x + Math.cos(a) * R;
       o.y = P.y + Math.sin(a) * R * 0.72;
@@ -1405,6 +1428,7 @@
 
       for (let j = E.list.length - 1; j >= 0; j--) {
         const en = E.list[j];
+        if (!en) continue;                       // 列表可能被上一次命中改动过
         if (hits.indexOf(en.uid) !== -1) continue;
         if (Math.hypot(en.x - o.x, en.y - o.y) <= en.r + 12) {
           o.cd = 0.22;

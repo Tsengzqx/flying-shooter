@@ -378,16 +378,28 @@
     if (bs.def.twist === 'blink') blink(bs);
   }
 
-  /** 瞬移（虚空掠夺者） */
+  /**
+   * 瞬移（虚空掠夺者）：闪到另一侧
+   *
+   * ⚠️ 不能只是直接改 bs.x —— update() 里每帧都会用游走公式重算
+   *    `bs.x = W/2 + sin(t * rate + sway) * range`，
+   *    直接赋值下一帧就被覆盖，"瞬移"只会闪一下。
+   *    这里改成**反解出落点对应的 sway 相位**，让游走公式本身就停在目标位置，
+   *    位移才能真正留住，而且之后会从新位置平滑地继续摆动。
+   */
   function blink(bs) {
-    const side = bs.x < G.W / 2 ? 1 : -1;
     const range = Math.max(60, G.W / 2 - 96);
-    bs.x = G.W / 2 + side * range * (0.55 + Math.random() * 0.45);
-    bs.sway = Math.random() * 6.28;
+    const side = bs.x < G.W / 2 ? 1 : -1;
+    const targetX = G.W / 2 + side * range * (0.55 + Math.random() * 0.45);
+
+    const rate = (bs.def.twist === 'blink' ? 0.62 : 0.45) + bs.phase * 0.13;
+    const s = Math.max(-1, Math.min(1, (targetX - G.W / 2) / range));
+    bs.sway = Math.asin(s) - bs.t * rate;
+    bs.x = targetX;
 
     if (G.particles) {
-      G.particles.burst(bs.x, bs.y, { color: bs.def.pal.edge, count: 16, speed: 260 });
-      G.particles.ring(bs.x, bs.y, bs.def.pal.edge, 14, 320);
+      G.particles.burst(targetX, bs.y, { color: bs.def.pal.edge, count: 16, speed: 260 });
+      G.particles.ring(targetX, bs.y, bs.def.pal.edge, 14, 320);
     }
   }
 
@@ -626,9 +638,13 @@
     }
 
     if (bs.overload) {
-      bs.overT += dt;
       const chip = bs.maxHp * OVERLOAD_PCT * dt;
       bs.hp -= chip;
+
+      // 也让玩家看见"过载在掉血"，否则血条凭空消失会很莫名其妙
+      if (bs.hp > 0 && G.combat && G.combat.record) {
+        G.combat.record(bs.x, bs.y - 34, chip, false, 'overload', 'overload');
+      }
 
       // 过载期间持续冒火花，视觉上明确"它在崩解"
       if (G.particles && Math.random() < dt * 18) {

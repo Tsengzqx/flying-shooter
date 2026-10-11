@@ -154,6 +154,7 @@
     update(dt) {
       for (let i = list.length - 1; i >= 0; i--) {
         const p = list[i];
+        if (!p) { list.splice(i, 1); continue; }   // 防御：清掉空槽
         p.life -= dt;
         if (p.life <= 0) {
           list.splice(i, 1);

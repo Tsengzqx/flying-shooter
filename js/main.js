@@ -544,7 +544,7 @@ function gameOver() {
   document.getElementById('over-score').textContent = Game.score.toLocaleString();
   document.getElementById('over-best').textContent = Game.highScore.toLocaleString();
   document.getElementById('over-record').classList.toggle('hidden', !isRecord);
-  renderSaveStats('over-stats', '本 局 战 绩');
+  renderSaveStats('over-stats', '累 计 战 绩');
 
   Game.screen = 'over';
   hud.update();
@@ -587,6 +587,9 @@ function toMenu() {
   Game.state = 'menu';
   Game.screen = 'menu';
   document.getElementById('menu-best').textContent = Game.highScore.toLocaleString();
+  // 中途退出也要把这一局的关卡记进累计战绩（否则只有"打死"才算数）
+  Game.save.recordProgress(Game.level, Game.score);
+  renderSaveStats('menu-stats');
   hud.invalidate();
   syncUI();
 }
