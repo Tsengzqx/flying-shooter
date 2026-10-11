@@ -40,20 +40,28 @@ html, body {
   position: absolute;
   inset: 0;
   padding: 14px 18px;
-  padding-top: calc(14px + env(safe-area-inset-top));
   pointer-events: none;
   font-variant-numeric: tabular-nums;
   text-shadow: 0 0 12px rgba(80, 200, 255, .55);
 }
 
+/* HUD 四个角都是绝对定位的子元素，父级的 padding 对它们不生效，
+   所以安全区必须逐项加在各自的偏移上（刘海屏 / 圆角屏）。 */
+#hud {
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+}
+
 .hud-item { position: absolute; }
 
-.hud-score { left: 18px; top: 14px; }
-.hud-best  { left: 18px; top: 56px; }
+.hud-score { left: calc(18px + var(--safe-l)); top: calc(14px + var(--safe-t)); }
+.hud-best  { left: calc(18px + var(--safe-l)); top: calc(56px + var(--safe-t)); }
 
 .hud-level {
   left: 50%;
-  top: 14px;
+  top: calc(14px + var(--safe-t));
   transform: translateX(-50%);
   color: #ffd166;
   letter-spacing: 2px;
@@ -61,8 +69,8 @@ html, body {
 }
 
 .hud-lives {
-  right: 18px;
-  top: 14px;
+  right: calc(18px + var(--safe-r));
+  top: calc(14px + var(--safe-t));
   color: #ff5c7a;
   letter-spacing: 4px;
   font-size: 22px;
@@ -96,7 +104,14 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  /* 横屏手机 / 虚拟键盘弹起时可视高度可能只有 240px，
+     内容比屏幕高就必须能滚，否则按钮会被裁在屏幕外、点都点不到。 */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: calc(24px + env(safe-area-inset-top, 0px))
+           calc(24px + env(safe-area-inset-right, 0px))
+           calc(24px + env(safe-area-inset-bottom, 0px))
+           calc(24px + env(safe-area-inset-left, 0px));
   background:
     radial-gradient(circle at 50% 35%, rgba(30, 90, 180, .28), transparent 62%),
     rgba(3, 6, 18, .82);
@@ -110,6 +125,7 @@ html, body {
 
 .screen-box {
   width: min(460px, 100%);
+  margin: auto;            /* flex + overflow 时用 auto 才能保住滚动，不会被裁剪 */
   text-align: center;
   animation: riseIn .35s cubic-bezier(.2, .9, .3, 1.2) both;
 }
@@ -558,7 +574,9 @@ kbd {
 
 .codex-head {
   flex: none;
-  padding: 14px 16px 10px;
+  padding: calc(14px + env(safe-area-inset-top, 0px))
+           calc(16px + env(safe-area-inset-right, 0px)) 10px
+           calc(16px + env(safe-area-inset-left, 0px));
   border-bottom: 1px solid rgba(120, 190, 255, .18);
   text-align: center;
 }
@@ -591,7 +609,9 @@ kbd {
 
 .codex-foot {
   flex: none;
-  padding: 12px;
+  padding: 12px calc(12px + env(safe-area-inset-right, 0px))
+           calc(12px + env(safe-area-inset-bottom, 0px))
+           calc(12px + env(safe-area-inset-left, 0px));
   text-align: center;
   border-top: 1px solid rgba(120, 190, 255, .18);
   background: rgba(4, 8, 18, .9);

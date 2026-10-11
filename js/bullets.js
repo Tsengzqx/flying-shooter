@@ -244,11 +244,30 @@
   }
 
   function updateList(list, dt) {
-    const homingTargets = G.enemies ? G.enemies.list : null;
+    let homingTargets = null;
+
+    // 只有我方子弹会追踪；Boss 不在 enemies.list 里，必须显式加进候选，
+    // 否则清光小怪后追踪弹面对 Boss 永远直飞、lock 也一直是 null。
+    if (list === friendly) {
+      homingTargets = [];
+      if (G.enemies && G.enemies.list) {
+        for (let k = 0; k < G.enemies.list.length; k++) {
+          const en = G.enemies.list[k];
+          if (en) homingTargets.push(en);
+        }
+      }
+      const boss = G.boss && G.boss.state && G.boss.state.boss;
+      if (targetAlive(boss)) homingTargets.push(boss);
+    }
 
     for (let i = list.length - 1; i >= 0; i--) {
       const b = list[i];
       if (!b) { list.splice(i, 1); continue; }   // 防御：清掉空槽，别让一帧异常把游戏打崩
+
+      // 保存本帧起点，combat 用「线段 × 圆」做扫掠碰撞。
+      // 轨道弹二级能到 3040px/s，16ms 一帧跨 48.6px；只检查终点会直接穿过小怪。
+      b.prevX = b.x;
+      b.prevY = b.y;
 
       /* ---- 追踪弹头 ---- */
       if (b.homing > 0 && homingTargets && homingTargets.length) {
@@ -368,6 +387,8 @@
 
       const b = {
         x, y, vx, vy,
+        prevX: x,
+        prevY: y,
         ox: x,
         // 判定半径同样设下限：太小的子弹不仅看不见，也更难打中
         r: Math.max(MIN_R, opt.r || 4),
@@ -403,6 +424,8 @@
       opt = opt || {};
       hostile.push({
         x, y, vx, vy,
+        prevX: x,
+        prevY: y,
         r: opt.r || 5,
         damage: opt.damage || 1,
         t: 0,

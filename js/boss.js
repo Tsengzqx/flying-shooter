@@ -695,13 +695,16 @@
           G.particles.sweep(bs.x, bs.y, R.burst.radius, '#b6ff6e', 0.45, 3);
           G.particles.burst(bs.x, bs.y, { color: '#9ae66e', count: 22, speed: 320 });
         }
-        if (G.upgrades.blastAround) {
+        if (G.upgrades && G.upgrades.blastAround) {
           G.upgrades.blastAround(bs.x, bs.y, R.burst.radius, R.burst.dmg,
             { dot: true, flash: true });
         }
       }
 
-      if (bs.hp <= 0 && !bs.dead) {
+      // 引爆的范围伤害会回打 Boss 自己，可能已经在 areaDamage() 里 kill()。
+      // 不管是 tick 致死还是 burst 致死，只要死了就立刻停，绝不能继续变阶段/召小怪/开火。
+      if (bs.dead) return;
+      if (R.dead || bs.hp <= 0) {
         kill(bs);
         return;
       }
@@ -767,14 +770,33 @@
   /* ============================================================
      六、碰撞接口
      ============================================================ */
+  /** 子弹当前圆或「上一帧→这一帧」的路径是否扫过 Boss */
+  function bulletTouchesBoss(b, bs) {
+    if (!b || !bs) return false;
+    const rr = (b.r || 0) + bs.r;
+    const dx = b.x - bs.x;
+    const dy = b.y - bs.y;
+    if (dx * dx + dy * dy <= rr * rr) return true;
+
+    if (!Number.isFinite(b.prevX) || !Number.isFinite(b.prevY)) return false;
+    const vx = b.x - b.prevX;
+    const vy = b.y - b.prevY;
+    const len2 = vx * vx + vy * vy;
+    if (len2 <= 1e-9) return false;
+
+    const t = Math.max(0, Math.min(1,
+      ((bs.x - b.prevX) * vx + (bs.y - b.prevY) * vy) / len2));
+    const cx = b.prevX + vx * t;
+    const cy = b.prevY + vy * t;
+    const qx = cx - bs.x;
+    const qy = cy - bs.y;
+    return qx * qx + qy * qy <= rr * rr;
+  }
+
   function tryHit(b) {
     const bs = state.boss;
     if (!bs || bs.dead) return false;
-
-    const dx = b.x - bs.x;
-    const dy = b.y - bs.y;
-    const rr = b.r + bs.r;
-    if (dx * dx + dy * dy > rr * rr) return false;
+    if (!bulletTouchesBoss(b, bs)) return false;
 
     applyDamage(bs, b.damage, b.x, b.y, b.critChance, b.bonus);
     return true;
@@ -791,10 +813,14 @@
     if (dx * dx + dy * dy <= rr * rr) P.hit();
   }
 
-  function areaDamage(x, y, radius, dmg) {
+  function areaDamage(x, y, radius, dmg, opts) {
     const bs = state.boss;
     if (!bs || bs.dead) return;
     if (Math.hypot(bs.x - x, bs.y - y) <= radius + bs.r) {
+      if (G.combat && G.combat.record) {
+        G.combat.record(bs.x, bs.y, dmg, false, 'bossArea',
+          opts && opts.dot ? 'dot' : 'secondary');
+      }
       bs.hp -= dmg;
       bs.hitFlash = 1;
       if (bs.hp <= 0) kill(bs);

@@ -183,8 +183,11 @@
   function open(tab) {
     opened = true;
     render(tab || current);
+    // 用 showScreen 而不是直接摸 DOM：它会统一同步 Game.screen，
+    // 快捷键判定和 isOpen() 都依赖这个状态保持一致。
     if (G.showScreen) G.showScreen('codex');
     else {
+      G.screen = 'codex';
       const el = document.getElementById('screen-codex');
       if (el) el.classList.remove('hidden');
     }
@@ -194,12 +197,14 @@
     opened = false;
     if (G.showScreen) G.showScreen('menu');
     else {
+      G.screen = 'menu';
       const el = document.getElementById('screen-codex');
       if (el) el.classList.add('hidden');
     }
   }
 
-  function isOpen() { return opened; }
+  /** 界面是否真的处于图鉴状态（而不是只看内部标志位） */
+  function isOpen() { return opened && G.screen === 'codex'; }
 
   /** 绑定 DOM（元素不存在时全部安全跳过，方便单测） */
   function bind() {

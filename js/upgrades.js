@@ -122,8 +122,8 @@
 
     /* ---- 道具流 · 紫 ---- */
     { id: 'item_overload',  name: '超载补给', icon: '🧯', build: 'item', rarity: 'epic', max: 3,
-      desc: '临时道具持续时间再翻倍',
-      delta: '持续时间再翻一倍' },
+      desc: '临时道具持续时间 +100%（每层再 +100%）',
+      delta: '持续时间再 +100%' },
     { id: 'item_converter', name: '转化装置', icon: '🔄', build: 'item', rarity: 'epic', max: 3,
       desc: '每拾取 1 件道具，永久 +0.15 子弹伤害',
       delta: '每件道具的永久伤害 +0.15' },
@@ -204,7 +204,7 @@
       desc: '僚机数量 +1',
       delta: '僚机再 +1 架' },
     { id: 'fleet_sync',    name: '数据同步', icon: '📡', build: 'fleet', rarity: 'rare',   max: 4,
-      desc: '僚机继承本体数值的比例 +10%（基础 50%）',
+      desc: '僚机继承本体数值的比例 +10%（基础 25%）',
       delta: '继承比例再 +10%' },
     { id: 'fleet_rapid',   name: '快速循环', icon: '⏱️', build: 'fleet', rarity: 'common', max: 4,
       desc: '僚机射击间隔 −15%',
@@ -260,8 +260,8 @@
           也不产生"命中积累"。DOT 想变强，只能靠下面这些增益。
        ------------------------------------------------------------ */
     { id: 'dot_core',     name: '辐射源',   icon: '☢️', build: 'rad', rarity: 'epic',   max: 5,
-      desc: '核心：命中即点燃持续伤害，每层每秒 0.10 伤害',
-      delta: '每层每秒伤害 +0.10' },
+      desc: '核心：命中即点燃持续伤害，每层每秒 0.32 伤害，层数上限 +6',
+      delta: '每层每秒伤害 +0.32、上限再 +6' },
     { id: 'dot_stack',    name: '衰变增幅', icon: '🦠', build: 'rad', rarity: 'common', max: 5,
       desc: '每次命中额外叠加 1 层持续伤害',
       delta: '每次命中再 +1 层' },
@@ -269,8 +269,8 @@
       desc: '持续伤害 +25%',
       delta: '持续伤害再 +25%' },
     { id: 'dot_cap',      name: '临界质量', icon: '⚛️', build: 'rad', rarity: 'rare',   max: 4,
-      desc: '层数上限 +8',
-      delta: '层数上限再 +8' },
+      desc: '层数上限 +10',
+      delta: '层数上限再 +10' },
     { id: 'dot_haste',    name: '高频衰变', icon: '📶', build: 'rad', rarity: 'common', max: 4,
       desc: '跳数间隔 −12%',
       delta: '跳数间隔再 −12%' },
@@ -280,8 +280,8 @@
 
     /* ---- 三种伤害源：辐射 / 燃烧 / 剧毒 ---- */
     { id: 'dot_burn',     name: '燃烧弹',   icon: '🧨', build: 'rad', rarity: 'rare',   max: 4,
-      desc: '灼烧：命中额外 +2 层，持续伤害 +20%，上限 +3',
-      delta: '再 +2 层、伤害再 +20%、上限再 +3' },
+      desc: '灼烧：命中额外 +2 层，持续伤害 +20%，上限 +4',
+      delta: '再 +2 层、伤害再 +20%、上限再 +4' },
     { id: 'dot_venom',    name: '剧毒弹',   icon: '🟢', build: 'rad', rarity: 'rare',   max: 3,
       desc: '中毒：命中额外 +1 层，持续时间 +2 秒，伤害 +18%',
       delta: '再 +1 层、持续再 +2 秒、伤害再 +18%' },
@@ -1001,17 +1001,11 @@
       G.lives = Math.min(G.stats.maxLives, G.lives + 1);
     }
 
-    // 金色：飞升 —— 立刻提升 3 级
-    if (id === 'gold_level_ascend' && G.progress) {
-      let need = 0;
-      for (let k = 0; k < 3; k++) {
-        need += G.progress.xpFor(G.progress.state.level + k);
-      }
-      G.progress.addXp(need);
-    }
-
     syncSummons();
 
+    // 先关闭当前强化面板、消耗掉这一次选择，再结算会产生新升级的副作用。
+    // 否则「飞升」在 state=upgrade 时调用 progress.addXp()，会被 addXp 的
+    // `G.state !== 'playing'` 保护直接拒绝，卡片拿到了但等级完全不变。
     state.pending = false;
     G.state = 'playing';
     G.screen = null;
@@ -1019,6 +1013,15 @@
     if (G.hud) G.hud.invalidate();
 
     if (G.progress && G.progress.onChosen) G.progress.onChosen();
+
+    // 金色：飞升 —— 立刻提升 3 级（必须在恢复 playing 之后结算）
+    if (id === 'gold_level_ascend' && G.progress) {
+      let need = 0;
+      for (let k = 0; k < 3; k++) {
+        need += G.progress.xpFor(G.progress.state.level + k);
+      }
+      G.progress.addXp(need);
+    }
 
     const P = G.player;
     if (G.particles && P) {
@@ -1068,18 +1071,31 @@
         const en = hit[k];
         if (en.alive === false || en.hp <= 0) continue;
         const idx = E.list.indexOf(en);
-        if (idx !== -1) E.damage(idx, dmg, o);
+        if (idx !== -1) {
+          // 范围伤害是真实输出，也要计入左上角「秒伤」；DOT 引爆仍用绿色类型
+          if (G.combat && G.combat.record) {
+            G.combat.record(en.x, en.y, dmg, false, 'area' + en.uid,
+              o.dot ? 'dot' : 'secondary');
+          }
+          E.damage(idx, dmg, o);
+        }
       }
     }
 
     if (G.boss && G.boss.areaDamage) G.boss.areaDamage(x, y, radius, dmg, opts);
   }
 
-  function chainLightning(x, y, jumps, depth, dmgOverride) {
+  /**
+   * 连锁闪电
+   * @param {number|string} [excludeUid] 命中特效用：排除刚刚被子弹打中的主目标，
+   *        否则最近目标就是距离 0 的它自己，所谓"连锁"永远不会跳到第二只。
+   */
+  function chainLightning(x, y, jumps, depth, dmgOverride, excludeUid) {
     const E = G.enemies;
     if (!E || !E.list.length) return;
 
     const used = [];
+    if (excludeUid !== undefined && excludeUid !== null) used.push(excludeUid);
     const dmg = dmgOverride == null ? 0.85 * (G.stats.chain || 1) : dmgOverride;
     let cx = x;
     let cy = y;
@@ -1105,6 +1121,9 @@
       used.push(en.uid);
       cx = en.x;
       cy = en.y;
+      if (G.combat && G.combat.record) {
+        G.combat.record(en.x, en.y, dmg, false, 'arc' + en.uid, 'secondary');
+      }
       E.damage(best, dmg, { depth: depth });
     }
   }
@@ -1434,6 +1453,9 @@
           o.cd = 0.22;
           hits.push(en.uid);
           if (G.particles) G.particles.spark(o.x, o.y, '#7bffd0');
+          if (G.combat && G.combat.record) {
+            G.combat.record(en.x, en.y, dmg, false, 'orbit' + en.uid, 'secondary');
+          }
           E.damage(j, dmg, { depth: 0 });
           break;
         }
@@ -1684,11 +1706,17 @@
       return state.bossKills;
     },
 
-    /** 当前"命中积累"提供的额外伤害（无上限） */
+    /**
+     * 当前「命中积累」提供的额外伤害（无上限）
+     *
+     * 击破奖励承诺的是「总伤害 ×2」，所以命中积累也必须吃到这条关卡进度乘区。
+     * 之前只在 recalc() 里乘了 S.damage，导致基础子弹翻倍、命中积累却原地不动；
+     * 后期命中积累反而是主要伤害来源，实际倍率会远低于面板和文案承诺。
+     */
     hitBonus() {
       const S = G.stats;
       if (!S || !S.hitDamage) return 0;
-      return state.hits * S.hitDamage;
+      return state.hits * S.hitDamage * (S.breakBonus || 1);
     },
 
     /** 金色：点石成金 —— 拾取道具时累计射速 */

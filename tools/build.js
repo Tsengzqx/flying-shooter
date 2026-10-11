@@ -15,6 +15,7 @@
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
+const vm = require('vm');
 
 const ROOT = path.join(__dirname, '..');
 const DIST = path.join(ROOT, 'dist');
@@ -35,7 +36,7 @@ const CLOSE = '*' + '/';
    一、去注释（安全版）
    ------------------------------------------------------------
    不做完整词法分析 —— 那要在字符串 / 正则 / 模板串之间来回判断，
-   一旦判错就会把代码改坏。这里只处理**百分之百安全**的三种情况：
+   一旦判错就会把代码改坏。这里只处理**百分之百安全**的几种情况：
 
      ① 整行注释：行首（含缩进）就是双斜杠      → 整行清空
      ② 块注释：行首就是块注释开头，直到结束标记 → 只清注释、保留换行
@@ -43,21 +44,52 @@ const CLOSE = '*' + '/';
 
    关键是**保留换行**，这样压缩后的报错行号和源码完全一致，
    出问题时还能对着源码看。
+
+   ⚠️ 反引号一律不碰：模板字符串可以跨行，里面完全可能出现
+      "一整行看起来就是 // 注释" 的内容。所以只要这一行出现反引号，
+      或者行首就落在未闭合的模板串里，就**整行原样保留**（宁可漏删注释，
+      也不能改坏字符串）。历史上这里还踩过另一个坑：把"行首是 *"的行
+      当成 JSDoc 续行删掉，结果删掉了乘法换行续写，见下面的注释。
    ============================================================ */
+function scanTemplate(line, open) {
+  let tpl = open;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '\\') { i++; continue; }        // 跳过转义字符
+    if (ch === '`') tpl = !tpl;
+  }
+  return tpl;
+}
+
 function stripComments(src) {
   const lines = src.split('\n');
   const out = [];
   let inBlock = false;
+  let inTemplate = false;
 
   for (const line of lines) {
     const trimmed = line.trim();
 
-    /* ---- ② 块注释内部 ---- */
+    /* ---- 块注释内部（此时反引号只是普通文本，不参与模板判断） ---- */
     if (inBlock) {
       const end = line.indexOf(CLOSE);
       if (end === -1) { out.push(''); continue; }   // 整行都在块里
       inBlock = false;
       out.push(line.slice(end + 2));                // 结束标记之后可能还有代码
+      continue;
+    }
+
+    /* ---- 行首落在未闭合的模板串里：整行原样保留 ---- */
+    if (inTemplate) {
+      inTemplate = scanTemplate(line, true);
+      out.push(line);
+      continue;
+    }
+
+    /* ---- 本行含反引号：可能开/闭模板串，整行原样保留 ---- */
+    if (line.indexOf('`') !== -1) {
+      inTemplate = scanTemplate(line, false);
+      out.push(line);
       continue;
     }
 
@@ -85,8 +117,7 @@ function stripComments(src) {
     /* ---- ③ 行尾双斜杠注释：这一行没有任何引号才敢动 ---- */
     if (line.indexOf('//') !== -1 &&
         line.indexOf('"') === -1 &&
-        line.indexOf("'") === -1 &&
-        line.indexOf('`') === -1) {
+        line.indexOf("'") === -1) {
       out.push(line.slice(0, line.indexOf('//')));
       continue;
     }
@@ -100,6 +131,31 @@ function stripComments(src) {
 /* ============================================================
    二、单文件版
    ============================================================ */
+
+/**
+ * 断言去注释后的代码仍然能解析
+ * 用 vm.Script 只做语法检查（不执行），失败就把是哪一行报出来。
+ */
+function assertParses(file, code) {
+  try {
+    // eslint-disable-next-line no-new
+    new vm.Script(code, { filename: file });
+  } catch (e) {
+    const line = (e && e.lineNumber) || 0;
+    const total = code.split('\n').length;
+    const srcLines = code.split('\n');
+    const ctxLines = [];
+    for (let i = Math.max(0, line - 3); i < Math.min(srcLines.length, line + 2); i++) {
+      ctxLines.push('      ' + (i + 1) + ' | ' + srcLines[i]);
+    }
+    throw new Error(
+      '去注释后语法错误：' + file + ' 第 ' + line + '/' + total + ' 行\n' +
+      '      ' + (e && e.message) + '\n' + ctxLines.join('\n') +
+      '\n      （多半是模板字符串 / 正则里的注释样式内容被误删了）'
+    );
+  }
+}
+
 function build() {
   let html = read('index.html');
   const inlined = [];
@@ -117,11 +173,19 @@ function build() {
 
   /* ---- 2. 内联脚本（必须保持原有顺序） ---- */
   html = html.replace(/<script\s+src="([^"]+)"\s*><\/script>/g, (m, src) => {
-    let js = read(src);
-    if (js.indexOf('</script') !== -1) {
+    const raw = read(src);
+    if (raw.indexOf('</script') !== -1) {
       throw new Error(src + ' 中含有 </script，无法安全内联');
     }
-    if (!KEEP_COMMENTS) js = stripComments(js);
+
+    let js = raw;
+    if (!KEEP_COMMENTS) {
+      js = stripComments(raw);
+      // 去注释后必须仍然是一段合法 JS。模板串 / 正则里的注释样式内容
+      // 一旦被误删就会在这里当场暴露，而不是等到玩家打开页面白屏。
+      assertParses(src, js);
+    }
+
     inlined.push('js   ' + src);
     return '<script>\n/* ===== ' + src + ' ===== */\n' + js + '\n</script>';
   });
@@ -306,8 +370,86 @@ const zipBuf = makeZip(entries);
 const zipPath = path.join(DIST, ZIP_NAME);
 fs.writeFileSync(zipPath, zipBuf);
 
+/**
+ * 把刚写出去的 zip 重新读回来校验
+ *
+ * 只检查内存里的 entries 是不够的 —— 中央目录偏移、CRC、压缩长度任何一处
+ * 算错，自检都会"通过"，但用户解压时报错。这里真的去解析产物字节。
+ */
+function verifyZip(buf, expected) {
+  const errs = [];
+
+  // EOCD 在最后 22 字节（没有注释时）
+  const eocd = buf.length - 22;
+  if (eocd < 0 || buf.readUInt32LE(eocd) !== 0x06054b50) {
+    return ['找不到 ZIP 结尾记录（EOCD）'];
+  }
+
+  const count = buf.readUInt16LE(eocd + 10);
+  const cdSize = buf.readUInt32LE(eocd + 12);
+  const cdOff = buf.readUInt32LE(eocd + 16);
+
+  if (count !== expected.length) {
+    errs.push('中央目录条目数 ' + count + ' ≠ 期望 ' + expected.length);
+  }
+  if (cdOff + cdSize !== eocd) {
+    errs.push('中央目录偏移/长度对不上 EOCD');
+  }
+
+  // 逐个走中央目录，并用本地头 + CRC 还原内容
+  let p = cdOff;
+  const seen = [];
+  for (let i = 0; i < count; i++) {
+    if (p + 46 > buf.length || buf.readUInt32LE(p) !== 0x02014b50) {
+      errs.push('第 ' + (i + 1) + ' 个中央目录条目损坏');
+      break;
+    }
+    const method = buf.readUInt16LE(p + 10);
+    const crc = buf.readUInt32LE(p + 16);
+    const compSize = buf.readUInt32LE(p + 20);
+    const rawSize = buf.readUInt32LE(p + 24);
+    const nameLen = buf.readUInt16LE(p + 28);
+    const extraLen = buf.readUInt16LE(p + 30);
+    const cmtLen = buf.readUInt16LE(p + 32);
+    const localOff = buf.readUInt32LE(p + 42);
+    const name = buf.slice(p + 46, p + 46 + nameLen).toString('utf8');
+    seen.push(name);
+
+    if (buf.readUInt32LE(localOff) !== 0x04034b50) {
+      errs.push(name + ' 的本地文件头签名错误');
+    } else {
+      const lNameLen = buf.readUInt16LE(localOff + 26);
+      const lExtraLen = buf.readUInt16LE(localOff + 28);
+      const dataOff = localOff + 30 + lNameLen + lExtraLen;
+      const body = buf.slice(dataOff, dataOff + compSize);
+      let data;
+      try {
+        data = method === 8 ? zlib.inflateRawSync(body) : body;
+      } catch (err) {
+        errs.push(name + ' 解压失败：' + err.message);
+        data = null;
+      }
+      if (data) {
+        if (data.length !== rawSize) {
+          errs.push(name + ' 解压后长度 ' + data.length + ' ≠ ' + rawSize);
+        } else if (crc32(data) !== crc) {
+          errs.push(name + ' CRC 校验失败');
+        }
+      }
+    }
+
+    p += 46 + nameLen + extraLen + cmtLen;
+  }
+
+  const missing = expected.map((e) => e.name).filter((n) => seen.indexOf(n) === -1);
+  if (missing.length) errs.push('产物里缺少：' + missing.join(', '));
+
+  return errs;
+}
+
 /* ---- 自检 ---- */
 const problems = [];
+problems.push.apply(problems, verifyZip(zipBuf, entries));
 
 // 1) zip 里绝不该出现构建产物或版本库
 for (const e of entries) {

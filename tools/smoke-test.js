@@ -243,9 +243,34 @@ const localStorage = {
 /* ---------------- 组装沙箱 ---------------- */
 const winListeners = Object.create(null);
 
+/* 可复现的随机数
+   ------------------------------------------------------------
+   套件里有若干依赖概率的用例（掉落率、品质分布、随机玩法压测）。
+   不固定种子时，同一个 commit 在 CI 上偶尔会翻车，很难查。
+   设 SMOKE_SEED=123 就会把沙箱里的 Math.random 换成种子 PRNG，
+   失败时可以照着打印出来的种子原地复现。
+
+   用法：SMOKE_SEED=123 node tools/smoke-test.js          （bash）
+         $env:SMOKE_SEED=123; node tools/smoke-test.js     （PowerShell）
+   ------------------------------------------------------------ */
+const SMOKE_SEED = process.env.SMOKE_SEED;
+let sandboxMath = Math;
+let seedState = 0;
+
+if (SMOKE_SEED !== undefined && SMOKE_SEED !== '') {
+  seedState = (parseInt(SMOKE_SEED, 10) || 1) >>> 0;
+  sandboxMath = Object.create(Math);
+  sandboxMath.random = function () {
+    // 数值取自 Numerical Recipes 的 LCG，够用且实现只有两行
+    seedState = (Math.imul(seedState, 1664525) + 1013904223) >>> 0;
+    return seedState / 4294967296;
+  };
+}
+
 const sandbox = {
   console,
-  Math, Date, JSON, Object, Array, String, Number, Boolean, Error, Promise, Set, Map,
+  Math: sandboxMath,
+  Date, JSON, Object, Array, String, Number, Boolean, Error, Promise, Set, Map,
   performance: { now: () => nowMs },
   requestAnimationFrame,
   cancelAnimationFrame: noop,
@@ -362,6 +387,18 @@ const G = sandbox.Game;
 /** 触发一个 window 事件（测试用：模拟改窗口尺寸等） */
 function fireWindow(type) {
   (winListeners[type] || []).forEach((fn) => fn({ type }));
+}
+
+/** 模拟一次键盘事件（主循环里的全局快捷键走的是 window keydown） */
+function fireKey(code) {
+  const ev = {
+    code: code,
+    repeat: false,
+    prevented: false,
+    preventDefault() { this.prevented = true; },
+  };
+  (winListeners.keydown || []).forEach((fn) => fn(ev));
+  return ev;
 }
 
 /**
@@ -836,6 +873,77 @@ if (G.upgrades) {
     .filter((b) => !mapped.has(b.id) && NEED_LEVEL.indexOf(b.id) === -1)
     .map((b) => b.id);
   ok('池子里每个增益都有属性映射', unmapped.length === 0, unmapped.join(','));
+
+  /* 卡面出现的所有 lv('xxx') 引用都必须真的存在于池子里。
+     拼错一个 id 不会报错，只会让那条增益永远算出 0 —— 静默失效最难查。 */
+  (function () {
+    const src = fs.readFileSync(path.join(ROOT, 'js/upgrades.js'), 'utf8');
+    const ids = new Set(POOL.map((b) => b.id));
+    const refs = new Set();
+    for (const m of src.matchAll(/lv\('([A-Za-z0-9_]+)'\)/g)) refs.add(m[1]);
+    const dangling = [...refs].filter((r) => !ids.has(r));
+    ok('代码里引用的增益 id 全部存在（无拼写漂移）', dangling.length === 0,
+      dangling.length ? '找不到：' + dangling.join(', ') : refs.size + ' 个引用全部命中');
+  })();
+
+  /* 卡面 desc / delta 里写死的数值必须和代码一致。
+     这几条曾经漂移过（辐射源写 0.10 实际 0.32、临界质量写 +8 实际 +10 等），
+     玩家看到的说明和实际效果对不上，属于诚信问题。 */
+  (function () {
+    startSafe();
+    const S = G.stats;
+
+    // 辐射源基础每层伤害
+    G.upgrades.owned.dot_core = 1;
+    G.upgrades.recalc();
+    const coreDesc = POOL.find((b) => b.id === 'dot_core').desc;
+    const coreVal = S.dotPerStack;
+    ok('辐射源卡面数值与代码一致',
+      coreDesc.indexOf(coreVal.toFixed(2)) >= 0,
+      '卡面「' + coreDesc + '」实际 ' + coreVal.toFixed(2));
+
+    // 临界质量：每层 +10 上限
+    const capBase = S.dotMax;
+    G.upgrades.owned.dot_cap = 1;
+    G.upgrades.recalc();
+    const capGain = S.dotMax - capBase;
+    const capDesc = POOL.find((b) => b.id === 'dot_cap').desc;
+    ok('临界质量卡面数值与代码一致',
+      capGain === 10 && capDesc.indexOf('+' + capGain) >= 0,
+      '实际 +' + capGain + '，卡面「' + capDesc + '」');
+
+    // 燃烧弹：上限 +4
+    startSafe();
+    G.upgrades.owned.dot_core = 1;
+    G.upgrades.recalc();
+    const burnBase = G.stats.dotMax;
+    G.upgrades.owned.dot_burn = 1;
+    G.upgrades.recalc();
+    const burnGain = G.stats.dotMax - burnBase;
+    const burnDesc = POOL.find((b) => b.id === 'dot_burn').desc;
+    ok('燃烧弹卡面上限数值与代码一致',
+      burnDesc.indexOf('+' + burnGain) >= 0,
+      '实际上限 +' + burnGain + '，卡面「' + burnDesc + '」');
+
+    // 数据同步：基础 25%
+    startSafe();
+    G.upgrades.recalc();
+    const baseInherit = Math.round(G.stats.droneInherit * 100);
+    const syncDesc = POOL.find((b) => b.id === 'fleet_sync').desc;
+    ok('数据同步卡面标明的「基础比例」与代码一致',
+      syncDesc.indexOf(baseInherit + '%') >= 0,
+      '实际基础 ' + baseInherit + '%，卡面「' + syncDesc + '」');
+
+    // 超载补给：每层 +100%（不是"翻倍"叠乘）
+    startSafe();
+    G.upgrades.recalc();
+    const ovBase = G.stats.itemDurationMul;
+    G.upgrades.owned.item_overload = 1;
+    G.upgrades.recalc();
+    const ovGain = Math.round((G.stats.itemDurationMul / ovBase - 1) * 100);
+    ok('超载补给卡面数值与代码一致',
+      ovGain === 100, '实际每层 +' + ovGain + '%');
+  })();
 
   const broken = [];
   for (const [id, stat, okFn] of MAP) {
@@ -3671,11 +3779,15 @@ if (G.upgrades && G.boss) {
     sandbox.innerHeight = h;
     fireWindow('resize');
     const L = G.panel.layout();
+    // layout() 在极短屏幕上会把面板整体上移（L.y），所以底边要用 L.y 算
+    const top = (L.y === undefined) ? G.panel.Y : L.y;
     return {
       h: h,
-      panelBottom: G.panel.Y + L.h,
+      visible: L.visible !== false,
+      panelBottom: L.visible === false ? 0 : top + L.h,
       barY: G.H - 10,
       playerY: G.H - Math.max(84, G.H * 0.15),
+      safeBottom: Math.min(G.H - 68, G.H * 0.62),
       rows: L.rows.length,
       all: L.all,
       rowH: L.rowH,
@@ -3690,15 +3802,20 @@ if (G.upgrades && G.boss) {
   U.owned.dot_crit = 1;
   U.recalc();
 
-  const sizes = [1000, 800, 600, 500, 420, 360];
+  const sizes = [1000, 800, 600, 500, 420, 360, 300, 280, 240, 200];
   let overlapBar = null;
   let overlapPlayer = null;
+  let beyondSafe = null;
   let clipped = 0;
+  let onScreen = null;
 
   for (const h of sizes) {
     const m = measure(h);
     if (m.panelBottom >= m.barY) overlapBar = h;
     if (m.panelBottom > m.playerY) overlapPlayer = h;
+    // 面板绝对不能越过自己声明过的安全下边界
+    if (m.panelBottom > m.safeBottom + 0.01) beyondSafe = h;
+    if (m.panelBottom > m.h) onScreen = h;
     if (m.rows < m.all) clipped++;
   }
 
@@ -3706,6 +3823,10 @@ if (G.upgrades && G.boss) {
     overlapBar ? 'H=' + overlapBar + ' 时压到了' : '全部 ' + sizes.join('/') + ' 都安全');
   ok('任何窗口高度下面板都不会盖住玩家默认站位', !overlapPlayer,
     overlapPlayer ? 'H=' + overlapPlayer + ' 时盖住了' : '全部安全');
+  ok('任何窗口高度下面板都不越过自己的安全下边界', !beyondSafe,
+    beyondSafe ? 'H=' + beyondSafe + ' 时越界了' : '含 200/240/280 等极矮屏幕');
+  ok('极矮屏幕下面板整体上移且不出屏', !onScreen,
+    onScreen ? 'H=' + onScreen + ' 时画到了屏幕外' : '全部在屏内');
   ok('小窗口会自动截断部分行（而不是硬挤）', clipped > 0,
     sizes.length + ' 种尺寸里有 ' + clipped + ' 种触发了截断');
 
@@ -3715,11 +3836,20 @@ if (G.upgrades && G.boss) {
   ok('截断时行高不低于可读下限', small.rowH >= 10,
     'rowH=' + small.rowH.toFixed(1));
 
+  // 240 这种横屏高度：放不下就该整块隐藏，而不是糊在屏幕中间
+  const tiny = measure(240);
+  ok('屏幕矮到放不下时面板选择隐藏而不是越界',
+    tiny.visible === false || tiny.panelBottom <= tiny.safeBottom + 0.01,
+    'H=240 visible=' + tiny.visible + ' bottom=' + tiny.panelBottom.toFixed(0) +
+    ' 安全线=' + tiny.safeBottom.toFixed(0));
+
   sandbox.innerHeight = oldH;
   fireWindow('resize');
   const restored = G.panel.layout();
   ok('恢复窗口尺寸后行数回到完整', restored.rows.length === restored.all,
     restored.rows.length + '/' + restored.all);
+  ok('恢复尺寸后面板回到基准 Y', restored.y === G.panel.Y,
+    'y=' + restored.y + ' 基准=' + G.panel.Y);
 
   // 击破奖励要在面板上看得见
   startSafe();
@@ -4098,7 +4228,364 @@ if (G.boss && G.powerups) {
     repeatErr ? repeatErr.message : '12 轮全部通过');
 }
 
-console.log('\n[39] 长时间稳定性（自动选强化 + 自动重开）');
+console.log('\n[39] 回归：Boss 竞态 / 飞升 / 穿模 / DOT 引爆 / 电弧 / 追踪 Boss');
+if (G.boss && G.upgrades && G.player) {
+  const U = G.upgrades;
+  const S = G.stats;
+
+  /* ============================================================
+     ① 升级弹窗与 Boss 同帧死亡
+     ------------------------------------------------------------
+     旧顺序是 progress 先弹三选一（state=upgrade），同一主循环里的 combat
+     随后仍会把 Boss 打死 —— XP 被 addXp 的 state 检查吞掉，死亡演出还会冻住。
+     现在 main.update 先跑 combat 再跑 progress。
+     ============================================================ */
+  startSafe();
+  G.progress.state.need = Infinity;
+  G.enemies.list.length = 0;
+  G.enemies.wave.queue.length = 0;
+  G.boss.reset();
+  G.boss.start(10);
+  const raceB = G.boss.state.boss;
+  raceB.entering = false;
+  raceB.y = 112;
+  raceB.fireCd = 1e9;
+
+  /* 先跑一帧让 Boss 落到位：update() 每帧会用 sway 公式重算 x，
+     开局第一帧它会从画面中心跳到摆动位置上（最多 144px）。
+     不先站稳就按 spawn 时的 x 发射，子弹必然打空。 */
+  step(16);
+  raceB.hp = 1;
+
+  const xpBefore = G.progress.state.total;
+  // 攒着一次升级机会，同时让子弹这一帧就能打死 Boss
+  G.progress.state.pending = 1;
+  G.bullets.reset();
+  G.bullets.spawnPlayer(raceB.x, raceB.y + 20, 0, -760, { damage: 99 });
+  step(16);
+
+  ok('Boss 在升级弹窗同帧被打死时，XP 仍然结算',
+    G.progress.state.total > xpBefore,
+    xpBefore + ' → ' + G.progress.state.total);
+  ok('Boss 死亡演出没有被强化面板冻住',
+    !G.boss.state.boss || G.boss.state.boss.dead,
+    'boss=' + (G.boss.state.boss ? 'dead=' + G.boss.state.boss.dead : '已清空'));
+
+  // 演出能正常跑完（不会被 upgrade 状态卡住）
+  let cleared = false;
+  for (let i = 0; i < 200; i++) {
+    if (G.state === 'upgrade' && U.state.offers.length) {
+      U.choose(U.state.offers[0].id);
+    }
+    step(16);
+    if (!G.boss.state.boss) { cleared = true; break; }
+  }
+  ok('让玩家选完强化后 Boss 演出能正常收尾', cleared);
+
+  /* ============================================================
+     ② 金色「飞升」曾经完全无效
+     choose() 在 state 还是 upgrade 时就调 addXp，被状态检查直接拒绝。
+     ============================================================ */
+  startSafe();
+  // 注意：这里**不能**把 need 设成 Infinity —— 飞升靠的就是真升级
+  const lvBefore = G.progress.state.level;
+  U.request(lvBefore);
+  ok('已进入强化选择', G.state === 'upgrade', 'state=' + G.state);
+
+  const ascendDef = U.POOL.find((b) => b.id === 'gold_level_ascend');
+  U.state.offers = [ascendDef];
+  U.choose('gold_level_ascend');
+  ok('金色「飞升」等级 +3 生效',
+    G.progress.state.level >= lvBefore + 3,
+    'LV' + lvBefore + ' → LV' + G.progress.state.level);
+  ok('飞升选完后回到战斗状态', G.state === 'playing', 'state=' + G.state);
+
+  /* ============================================================
+     ③ 超高速子弹穿模
+     轨道弹二级 3040px/s，16ms 一帧跨 48.6px，只查终点会整颗穿过去。
+     ============================================================ */
+  startSafe();
+  G.progress.state.need = Infinity;
+  G.enemies.list.length = 0;
+  G.enemies.wave.queue.length = 0;
+  G.enemies.spawn('gunship', 240);
+  const tunnelE = G.enemies.list[0];
+  tunnelE.x = 240; tunnelE.baseX = 240; tunnelE.y = 300;
+  tunnelE.vy = 0; tunnelE.amp = 0; tunnelE.fireCd = 1e9;
+  const tunnelHp = tunnelE.hp;
+
+  G.bullets.reset();
+  // 起点在敌机下方 25px，一帧后飞到上方 —— 中间完全跨过
+  G.bullets.spawnPlayer(240, 325, 0, -3040, { r: 4, damage: 5 });
+  G.player.autoFire = false;
+  step(16);
+
+  ok('超高速子弹不会穿过敌机',
+    tunnelE.hp < tunnelHp || G.enemies.list.indexOf(tunnelE) === -1,
+    'hp ' + tunnelHp.toFixed(0) + ' → ' +
+      (G.enemies.list.indexOf(tunnelE) === -1 ? '已被击毁' : tunnelE.hp.toFixed(0)));
+  G.player.autoFire = true;
+
+  /* ============================================================
+     ④ DOT 临界引爆
+     ============================================================ */
+  // ④-1 引爆不该给自己重新叠层（旧代码给 blastAround 传了 boolean true）
+  startSafe();
+  G.progress.state.need = Infinity;
+  U.owned.dot_core = 4;
+  U.owned.dot_burst = 3;
+  U.recalc();
+  G.enemies.list.length = 0;
+  G.enemies.wave.queue.length = 0;
+  G.enemies.spawn('gunship', 240);
+  const burstE = G.enemies.list[0];
+  burstE.hp = 1e9;
+  burstE.maxHp = 1e9;
+  burstE.x = 240; burstE.baseX = 240; burstE.y = 300;
+  burstE.vy = 0; burstE.amp = 0; burstE.fireCd = 1e9;
+  burstE.dotStacks = S.dotMax;
+  burstE.dotT = 99;
+  burstE.dotTick = 0;
+  const stacksBefore = burstE.dotStacks;
+
+  G.enemies.update(0.016);
+  ok('临界引爆后层数减半、且不会被自己重新叠回去',
+    burstE.dotStacks === Math.floor(stacksBefore / 2),
+    stacksBefore + ' → ' + burstE.dotStacks + '（期望 ' +
+      Math.floor(stacksBefore / 2) + '）');
+
+  // ④-2 致死的那一跳也要引爆（以前 R.dead 分支会先 continue 掉）
+  startSafe();
+  G.progress.state.need = Infinity;
+  U.owned.dot_core = 5;
+  U.owned.dot_burst = 3;
+  U.recalc();
+  G.enemies.list.length = 0;
+  G.enemies.wave.queue.length = 0;
+  G.enemies.spawn('gunship', 240);
+  const srcE = G.enemies.list[0];
+  const nearE = G.enemies.spawn('gunship', 260);
+  srcE.x = 240; srcE.baseX = 240; srcE.y = 300;
+  srcE.vy = 0; srcE.amp = 0; srcE.fireCd = 1e9;
+  srcE.hp = 1; srcE.maxHp = 1;
+  srcE.dotStacks = S.dotMax;
+  srcE.dotT = 99;
+  srcE.dotTick = 0;
+  nearE.x = 260; nearE.baseX = 260; nearE.y = 300;
+  nearE.vy = 0; nearE.amp = 0; nearE.fireCd = 1e9;
+  nearE.hp = 1e9; nearE.maxHp = 1e9;
+  const nearHp = nearE.hp;
+
+  G.enemies.update(0.016);
+  ok('致死的那一跳也会触发临界引爆',
+    nearE.hp < nearHp || G.enemies.list.indexOf(nearE) === -1,
+    '邻居 hp ' + nearHp.toFixed(0) + ' → ' +
+      (G.enemies.list.indexOf(nearE) === -1 ? '被炸毁' : nearE.hp.toFixed(0)));
+
+  /* ============================================================
+     ⑤ 电弧应该跳向「别的」敌人
+     旧代码不排除刚打中的主目标，最近目标永远是它自己（距离 0）。
+     ============================================================ */
+  startSafe();
+  G.progress.state.need = Infinity;
+  U.owned.gen_arc = 1;
+  U.recalc();
+  G.enemies.list.length = 0;
+  G.enemies.wave.queue.length = 0;
+  const arcA = G.enemies.spawn('gunship', 200);
+  const arcB = G.enemies.spawn('gunship', 260);
+  [arcA, arcB].forEach((e, i) => {
+    e.x = 200 + i * 60; e.baseX = e.x; e.y = 300;
+    e.vy = 0; e.amp = 0; e.fireCd = 1e9;
+    e.hp = 500; e.maxHp = 500;
+  });
+  const arcBHp = arcB.hp;
+  G.player.autoFire = false;
+  G.bullets.reset();
+  G.bullets.spawnPlayer(arcA.x, arcA.y + 10, 0, -300, { r: 4, damage: 1 });
+  for (let i = 0; i < 8; i++) step(16);
+  G.player.autoFire = true;
+
+  ok('电弧跳到了另一只敌机而不是原目标',
+    arcB.hp < arcBHp,
+    '第二只 hp ' + arcBHp.toFixed(0) + ' → ' + arcB.hp.toFixed(0));
+
+  /* ============================================================
+     ⑥ 追踪弹头要能锁 Boss（Boss 不在 enemies.list 里）
+     ============================================================ */
+  startSafe();
+  G.progress.state.need = Infinity;
+  U.owned.gen_homing = 3;
+  U.recalc();
+  G.enemies.list.length = 0;
+  G.enemies.wave.queue.length = 0;
+  G.boss.reset();
+  G.boss.start(10);
+  const lockB = G.boss.state.boss;
+  lockB.entering = false;
+  lockB.y = 150;
+  lockB.x = 240;
+  G.player.autoFire = false;
+
+  G.bullets.reset();
+  G.bullets.spawnPlayer(240, 500, 0, -600, {
+    homing: S.homingTurn, homingCone: S.homingCone,
+  });
+  const lockBullet = G.bullets.friendly[0];
+  for (let i = 0; i < 8; i++) step(16);
+  ok('追踪弹头会锁定 Boss',
+    !!lockBullet.lock && (lockBullet.lock === lockB || lockBullet.lock.hp !== undefined),
+    lockBullet.lock ? '已锁定' : '未锁定');
+  G.player.autoFire = true;
+
+  /* ============================================================
+     ⑦ 打 Boss 也要派发等离子溅射
+     ============================================================ */
+  startSafe();
+  G.progress.state.need = Infinity;
+  U.owned.gen_plasma = 3;
+  U.recalc();
+  G.enemies.list.length = 0;
+  G.enemies.wave.queue.length = 0;
+  G.boss.reset();
+  G.boss.start(10);
+  const plasB = G.boss.state.boss;
+  plasB.entering = false;
+  plasB.y = 200;
+  plasB.hp = 1e9;
+  plasB.maxHp = 1e9;
+  plasB.fireCd = 1e9;
+
+  // 同样先让 Boss 站稳
+  G.player.autoFire = false;
+  step(16);
+  plasB.fireCd = 1e9;
+  plasB.hp = 1e9;
+
+  /* Boss 的 x / y 每帧都会被游走公式重算（y 固定回到 ENTER_Y±8），
+     所以不能"钉"在任意坐标 —— 要先读它**实际**停在哪，再照着摆小怪和子弹。 */
+  const bx = plasB.x;
+  const by = plasB.y;
+
+  const sideE = G.enemies.spawn('gunship', bx + 40, { noElite: true });
+  sideE.x = bx + 40; sideE.baseX = bx + 40; sideE.y = by;
+  sideE.vy = 0; sideE.amp = 0; sideE.fireCd = 1e9;
+  sideE.hp = 1e9; sideE.maxHp = 1e9;
+  const sideHp = sideE.hp;
+
+  G.bullets.reset();
+  // 从 Boss 正下方 40px 往上打：Boss 半径 52，一帧内必中
+  G.bullets.spawnPlayer(bx, by + 40, 0, -400, { r: 5, damage: 5 });
+  for (let i = 0; i < 12; i++) {
+    plasB.fireCd = 1e9;
+    plasB.hp = 1e9;
+    step(16);
+  }
+  G.player.autoFire = true;
+
+  ok('打中 Boss 时等离子溅射也会波及旁边的小怪',
+    sideE.hp < sideHp || G.enemies.list.indexOf(sideE) === -1,
+    '旁边小怪 hp ' + sideHp.toFixed(0) + ' → ' +
+      (G.enemies.list.indexOf(sideE) === -1 ? '被炸毁' : sideE.hp.toFixed(0)));
+
+  /* ============================================================
+     ⑧ 中途退出 Boss 战不该把 Boss 血条残留到主菜单
+     ============================================================ */
+  startSafe();
+  G.boss.reset();
+  G.boss.start(10);
+  const leaveB = G.boss.state.boss;
+  leaveB.entering = false;
+  ok('退出前 Boss 是激活的', G.boss.active() === true);
+  G.toMenu();
+  ok('回主菜单会清掉 Boss 状态', !G.boss.state.boss && G.boss.active() === false);
+
+  /* ============================================================
+     ⑨ 击破奖励必须同时放大「命中积累」
+     否则基础子弹翻倍、命中积累原地不动，实际倍率远低于面板承诺。
+     ============================================================ */
+  startSafe();
+  U.owned.gen_hitpower = 4;
+  U.recalc();
+  U.state.hits = 2000;
+  const hbBefore = U.hitBonus();
+  U.addBossKill();
+  const hbAfter = U.hitBonus();
+  ok('击破奖励会放大命中积累（而不只是基础伤害）',
+    hbBefore > 0 && Math.abs(hbAfter - hbBefore * 2) < 1e-6,
+    '+' + hbBefore.toFixed(2) + ' → +' + hbAfter.toFixed(2));
+
+  /* ============================================================
+     ⑩ 过载是 Boss 自毁，不该算进玩家的「秒伤」
+     ============================================================ */
+  startSafe();
+  G.combat.reset();
+  const accumBefore = G.combat.state.accum;
+  G.combat.record(100, 100, 5000, false, 'overloadTest', 'overload');
+  ok('过载伤害不计入玩家秒伤',
+    Math.abs(G.combat.state.accum - accumBefore) < 1e-9,
+    'accum=' + G.combat.state.accum);
+  G.combat.record(100, 100, 7, false, 'bulletTest', 'bullet');
+  ok('普通子弹伤害仍然计入秒伤',
+    Math.abs(G.combat.state.accum - accumBefore - 7) < 1e-9,
+    'accum=' + G.combat.state.accum);
+
+  /* ============================================================
+     ⑪ 最高分两处来源要合并
+     ============================================================ */
+  G.save.bestScore = 4321;
+  const merged = G.save.reconcileHighScore(1000);
+  ok('最高分取两处来源的最大值', merged === 4321, 'merged=' + merged);
+  ok('合并后写回 save.bestScore', G.save.bestScore === 4321);
+
+  /* ============================================================
+     ⑫ 图鉴界面不能被回车/空格穿透开局
+     ============================================================ */
+  startSafe();
+  G.toMenu();
+  G.codex.open('boss');
+  ok('图鉴已打开', G.screen === 'codex', 'screen=' + G.screen);
+
+  const stBefore = G.state;
+  fireKey('Enter');
+  ok('图鉴里按回车不会开局', G.state === stBefore && G.state !== 'playing',
+    'state=' + G.state + ' screen=' + G.screen);
+
+  // 回车会把图鉴关掉（等同于"确认"），所以这里重新打开再测空格
+  G.codex.open('boss');
+  fireKey('Space');
+  ok('图鉴里按空格也不会开局', G.state !== 'playing',
+    'state=' + G.state + ' screen=' + G.screen);
+
+  fireKey('Escape');
+  ok('图鉴里按 Esc 会关闭', G.screen !== 'codex', 'screen=' + G.screen);
+  ok('isOpen() 与 screen 始终一致', G.codex.isOpen() === (G.screen === 'codex'));
+
+  /* ============================================================
+     ⑬ 面板「弹道」要等于一次齐射的真实发数
+     ============================================================ */
+  startSafe();
+  G.progress.state.need = Infinity;
+  U.owned.swarm_lance = 2;      // 前向弹道
+  U.owned.swarm_side = 2;       // 侧翼
+  U.owned.swarm_rear = 1;       // 尾部
+  U.owned.swarm_mirror = 1;     // 镜像
+  U.recalc();
+
+  G.player.autoFire = false;
+  G.bullets.reset();
+  G.player.shootVolley(S, 1);
+  const realVolley = G.bullets.friendly.length;
+
+  const shownLanes = G.panel.rows().find((r) => r.label === '弹道');
+  const shownNum = shownLanes ? parseInt(String(shownLanes.value).replace('×', ''), 10) : -1;
+  ok('面板弹道数 = 一次齐射的真实发数',
+    shownNum === realVolley,
+    '面板 ×' + shownNum + '，实际 ' + realVolley + ' 发');
+  G.player.autoFire = true;
+}
+
+console.log('\n[40] 长时间稳定性（自动选强化 + 自动重开）');
 startSafe();
 
 let crashed = null;

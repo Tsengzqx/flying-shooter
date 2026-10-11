@@ -22,7 +22,9 @@ jobs:
           node-version: '20'
 
       - name: 运行冒烟测试
-        run: node tools/smoke-test.js
+        # 固定种子：套件里有依赖概率的用例，不固定的话同一个 commit 偶尔会翻车。
+        # 本地复现：SMOKE_SEED=123 node tools/smoke-test.js
+        run: SMOKE_SEED=123 node tools/smoke-test.js
 
       - name: 不变量模糊测试（随机构筑 + 随机输入）
         run: node tools/fuzz.js 20261006 15 1800
@@ -33,4 +35,18 @@ jobs:
       - name: 构建单文件版并验证产物
         run: |
           node tools/build.js
-          SMOKE_BUNDLE='dist/星际突袭.html' node tools/smoke-test.js
+          SMOKE_BUNDLE='dist/星际突袭.html' SMOKE_SEED=123 node tools/smoke-test.js
+
+      - name: 校验源码 zip 真的能解压
+        # build.js 自带一遍 CRC / 中央目录自检，这里再用系统解压器独立验一次，
+        # 并确认解压出来的文件齐不齐
+        run: |
+          set -euo pipefail
+          unzip -t dist/flying-shooter-source.zip > /dev/null
+          mkdir -p /tmp/src
+          unzip -q dist/flying-shooter-source.zip -d /tmp/src
+          test -f /tmp/src/index.html
+          test -f /tmp/src/js/main.js
+          test -f /tmp/src/js/codex.js
+          test -f /tmp/src/CHANGELOG.md
+          echo "zip 解压成功，文件数：$(find /tmp/src -type f | wc -l)"

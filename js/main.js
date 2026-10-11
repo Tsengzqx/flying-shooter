@@ -196,7 +196,10 @@ Game.save = {
         totalBosses: this.totalBosses,
         runs: this.runs,
       }));
-    } catch (e) { /* 忽略 */ }
+      return true;
+    } catch (e) {
+      return false;   // 写入失败：调用方据此决定要不要保留 _dirty 以便重试
+    }
   },
 
   /** 一局开始时调用 */
@@ -222,14 +225,45 @@ Game.save = {
     let changed = false;
     if (level > this.bestLevel) { this.bestLevel = level; changed = true; }
     if (score > this.bestScore) { this.bestScore = score; changed = true; }
-    if (changed || this._dirty) {
-      this._dirty = false;
-      this.persist();
-    }
+    if (!changed && !this._dirty) return;
+
+    // 写成功才清 _dirty：否则一次瞬时失败会让"已累计的击杀"永远不再重试
+    if (this.persist()) this._dirty = false;
+  },
+
+  /** 有未落盘的改动就立刻写一次（页面隐藏 / 关闭时调用） */
+  flush() {
+    if (!this._dirty) return;
+    if (this.persist()) this._dirty = false;
+  },
+
+  /**
+   * 把两个来源的最高分合并成一个
+   *
+   * 历史上有两个键：`starstrike.high`（旧版只存最高分）和
+   * `starstrike.stats.bestScore`（后来的累计存档）。任意一个缺失或更旧时，
+   * 单纯各读各的会导致「最高分显示 0、但其实有记录」或者反过来。
+   * 这里统一取两者最大值，并同时写回两个键完成迁移。
+   */
+  reconcileHighScore(high) {
+    const merged = Math.max(high || 0, this.bestScore || 0);
+    this.bestScore = merged;
+    this.persist();
+    return merged;
   },
 };
 
 Game.save.load();
+
+/* 累计击杀 / 击破数平时只在内存里累加，靠"过关"和"结算"落盘。
+   玩家直接刷新或关掉页面时也要写一次，否则这一局的击杀会白打。 */
+window.addEventListener('pagehide', () => Game.save.flush());
+window.addEventListener('beforeunload', () => Game.save.flush());
+if (typeof document !== 'undefined' && document.addEventListener) {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') Game.save.flush();
+  });
+}
 
 /* ------------------------------------------------------------
    调试日志开关
@@ -257,6 +291,12 @@ try {
 } catch (e) {
   Game.highScore = 0;   // 隐私模式等场景下 localStorage 不可用
 }
+
+/* 合并两个来源的最高分，并写回两个键完成迁移 */
+Game.highScore = Game.save.reconcileHighScore(Game.highScore);
+try {
+  localStorage.setItem('starstrike.high', String(Game.highScore));
+} catch (e) { /* 忽略 */ }
 
 /* ------------------------------------------------------------
    三·五、增益属性表（默认值）
@@ -589,6 +629,10 @@ function toMenu() {
   document.getElementById('menu-best').textContent = Game.highScore.toLocaleString();
   // 中途退出也要把这一局的关卡记进累计战绩（否则只有"打死"才算数）
   Game.save.recordProgress(Game.level, Game.score);
+  // 清掉战斗状态：否则 Boss 血条 / 敌机 / 子弹会残留到下一局开始
+  if (Game.boss && Game.boss.reset) Game.boss.reset();
+  if (Game.bullets && Game.bullets.reset) Game.bullets.reset();
+  if (Game.enemies && Game.enemies.reset) Game.enemies.reset();
   renderSaveStats('menu-stats');
   hud.invalidate();
   syncUI();
@@ -610,8 +654,20 @@ window.addEventListener('keydown', (e) => {
 
   const code = e.code;
 
-  // 主菜单：回车 / 空格 开始
-  if (Game.state === 'menu' && (code === 'Enter' || code === 'Space' || code === 'NumpadEnter')) {
+  // 图鉴打开时：Esc / 回车 关闭，其它键一律不穿透到游戏
+  if (Game.screen === 'codex') {
+    if (code === 'Escape' || code === 'Enter' || code === 'NumpadEnter') {
+      e.preventDefault();
+      if (Game.codex && Game.codex.close) Game.codex.close();
+    }
+    return;
+  }
+
+  // 主菜单：回车 / 空格 开始。
+  // 必须同时确认 screen 也是 menu —— 否则在图鉴界面按回车会"隔着面板"开局，
+  // 变成 state=playing 但 screen 还停在 codex 的不一致状态。
+  if (Game.state === 'menu' && Game.screen === 'menu' &&
+      (code === 'Enter' || code === 'Space' || code === 'NumpadEnter')) {
     e.preventDefault();
     startGame();
     return;
@@ -668,8 +724,18 @@ function update(dt) {
   if (Game.enemies && Game.enemies.update) Game.enemies.update(dt);
   if (Game.boss && Game.boss.update) Game.boss.update(dt);
   if (Game.upgrades && Game.upgrades.update) Game.upgrades.update(dt);
-  if (Game.progress && Game.progress.update) Game.progress.update(dt);
+
+  /* 碰撞必须在 progress.update() **之前**结算：
+     旧顺序是 progress 先弹三选一（state=upgrade），同一主循环后面的 combat
+     仍然会执行并可能把 Boss 打死。这样 Boss XP 会被 addXp 的 state 检查吞掉，
+     死亡演出也会被冻结在强化面板后面。先碰撞、再决定要不要弹强化，
+     progress 才能看到 boss.dying() 并正确推迟弹窗。 */
   if (Game.combat && Game.combat.update) Game.combat.update(dt);
+  if (Game.state !== 'playing') return;
+
+  if (Game.progress && Game.progress.update) Game.progress.update(dt);
+  if (Game.state !== 'playing') return;
+
   if (Game.powerups && Game.powerups.update) Game.powerups.update(dt);
   if (Game.particles && Game.particles.update) Game.particles.update(dt);
 }
@@ -704,7 +770,9 @@ function draw() {
   ctx.restore();
 
   // Boss 血条 / 经验条 / 战斗面板不参与震动
-  if (Game.boss && Game.boss.drawUI) Game.boss.drawUI();
+  // Boss 血条必须跟着 state 一起隐藏：中途退出 Boss 战时如果还画着，
+  // 主菜单上会残留一条血条和 Boss 名字。
+  if (Game.boss && Game.boss.drawUI && Game.state !== 'menu') Game.boss.drawUI();
   if (Game.progress && Game.progress.draw && Game.state !== 'menu') Game.progress.draw();
   if (Game.panel && Game.panel.draw) Game.panel.draw();
 }

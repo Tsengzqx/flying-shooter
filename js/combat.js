@@ -24,17 +24,44 @@
   const dmgAcc = new Map();   // key -> { x, y, sum, crit, t }
   const state = { dps: 0, accum: 0, dotAccum: 0, timer: 0, ringT: 0 };
 
-  /** 圆形碰撞检测 */
+  /**
+   * 圆形 / 扫掠碰撞检测
+   *
+   * 子弹带 prevX/prevY 时，用「上一帧位置 → 当前帧位置」的线段与目标圆求最近点；
+   * 否则退回普通圆形重叠。轨道弹二级能到 3040px/s，16ms 一帧跨 48.6px，
+   * 只检查终点会从敌人一侧跳到另一侧、整颗穿过去。
+   */
   function overlap(a, b) {
+    if (!a || !b) return false;
+
+    const rr = (a.r || 0) + (b.r || 0);
     const dx = a.x - b.x;
     const dy = a.y - b.y;
-    const rr = a.r + b.r;
-    return dx * dx + dy * dy <= rr * rr;
+    if (dx * dx + dy * dy <= rr * rr) return true;
+
+    if (!Number.isFinite(a.prevX) || !Number.isFinite(a.prevY)) return false;
+
+    const sx = a.prevX;
+    const sy = a.prevY;
+    const vx = a.x - sx;
+    const vy = a.y - sy;
+    const len2 = vx * vx + vy * vy;
+    if (len2 <= 1e-9) return false;
+
+    const t = Math.max(0, Math.min(1,
+      ((b.x - sx) * vx + (b.y - sy) * vy) / len2));
+    const cx = sx + vx * t;
+    const cy = sy + vy * t;
+    const qx = cx - b.x;
+    const qy = cy - b.y;
+    return qx * qx + qy * qy <= rr * rr;
   }
 
   /** 记录一次命中：用于飘字与秒伤统计 */
   function recordDamage(x, y, amount, isCrit, key, type) {
-    state.accum += amount;
+    // 核心过载是 Boss 的自毁，不是玩家输出；要显示飘字，但不能把左上角
+    // 「秒伤」抬成天文数字。其余类型都计入玩家 DPS。
+    if (type !== 'overload') state.accum += amount;
     if (type === 'dot') state.dotAccum += amount;
 
     const rec = dmgAcc.get(key);
@@ -113,12 +140,22 @@
       const en = hit[k];
       if (en.alive === false || en.hp <= 0) continue;
       const idx = E.list.indexOf(en);
-      if (idx !== -1) E.damage(idx, dmg, { depth: 1 });
+      if (idx !== -1) {
+        if (G.combat && G.combat.record) {
+          G.combat.record(en.x, en.y, dmg, false, 'plasma' + en.uid, 'secondary');
+        }
+        E.damage(idx, dmg, { depth: 1 });
+      }
     }
   }
 
-  /** 子弹附加特效：溅射 / 霜冻 / 电弧 / 剧毒 */
-  function bulletEffects(e, S, x, y) {
+  /**
+   * 子弹附加特效：溅射 / 霜冻 / 电弧
+   * @param {boolean} isBoss Boss 不吃霜冻减速，但等离子会炸到身边小怪、电弧会跳向小怪
+   */
+  function bulletEffects(e, S, x, y, isBoss) {
+    if (!e) return;
+
     if (S.splash > 0) {
       const r = 34 + 12 * S.splash;
       // 溅射光环节流：避免高射速下满屏紫圈盖住弹幕
@@ -126,10 +163,12 @@
         G.particles.ring(x, y, '#c98cff', 5, 240);
         state.ringT = 0.18;
       }
-      splash(e.uid, x, y, r, 0.45 * S.splash);
+      // Boss 没有 uid：不排除任何小怪；普通敌机排除刚刚被直击的主目标
+      splash(isBoss ? null : e.uid, x, y, r, 0.45 * S.splash);
     }
 
-    if (S.frost > 0) {
+    // Boss 保持霜冻免疫（它的运动/阶段逻辑和普通敌机完全不同）
+    if (S.frost > 0 && !isBoss) {
       e.frostT = 4;
       e.frostMul = Math.max(0.2, 1 - 0.18 * S.frost);
       if (G.particles && Math.random() < 0.4) {
@@ -138,7 +177,8 @@
     }
 
     if (S.arc > 0 && G.upgrades && G.upgrades.chainLightning) {
-      G.upgrades.chainLightning(x, y, 1, 1, 0.4 * S.arc);
+      G.upgrades.chainLightning(x, y, 1, 1, 0.4 * S.arc,
+        isBoss ? null : e.uid);
     }
   }
 
@@ -173,10 +213,12 @@
       if (B && enemies) {
         for (let i = B.friendly.length - 1; i >= 0; i--) {
           const b = B.friendly[i];
+          if (!b) { B.friendly.splice(i, 1); continue; }
           let consumed = false;
 
           for (let j = enemies.length - 1; j >= 0; j--) {
             const e = enemies[j];
+            if (!e) continue;  // 连环击杀会递归缩短列表，旧下标可能已越界
             if (!overlap(b, e)) continue;
 
             // 穿透弹：同一颗子弹不重复命中同一个敌人
@@ -224,8 +266,10 @@
             break;
           }
 
-          // 没打到小怪，试试 Boss
+          // 没打到小怪，试试 Boss；直击成功后同样派发等离子 / 电弧附加效果
           if (!consumed && G.boss && G.boss.tryHit && G.boss.tryHit(b)) {
+            const bossTarget = G.boss.state && G.boss.state.boss;
+            bulletEffects(bossTarget || {}, S, b.x, b.y, true);
             consumed = true;
           }
 
@@ -238,6 +282,7 @@
         if (B) {
           for (let i = B.hostile.length - 1; i >= 0; i--) {
             const b = B.hostile[i];
+            if (!b) { B.hostile.splice(i, 1); continue; }
             if (!overlap(b, P)) continue;
 
             B.hostile.splice(i, 1);
@@ -248,11 +293,22 @@
         }
 
         if (G.state === 'playing' && enemies) {
-          for (let j = enemies.length - 1; j >= 0; j--) {
+          // 先快照撞到玩家的敌机，再逐个重查位置。
+          // E.damage() 的 onKill 可能递归炸掉别的敌人并 splice 列表；
+          // 直接拿数字下标继续循环会越界或重复处理移位后的对象。
+          const bodyHits = [];
+          for (let j = 0; j < enemies.length; j++) {
             const e = enemies[j];
-            if (!overlap(e, P)) continue;
+            if (e && overlap(e, P)) bodyHits.push(e);
+          }
 
-            E.damage(j, 9999, { depth: 0 });
+          for (let k = 0; k < bodyHits.length; k++) {
+            const e = bodyHits[k];
+            if (e.alive === false) continue;
+            const idx = enemies.indexOf(e);
+            if (idx === -1) continue;
+
+            E.damage(idx, 9999, { depth: 0 });
             P.hit();
 
             if (G.state !== 'playing') break;

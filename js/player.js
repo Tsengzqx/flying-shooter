@@ -252,6 +252,25 @@
     }
   };
 
+  /**
+   * 一次齐射实际打出多少发子弹
+   *
+   * 面板的「弹道」显示必须和 shootVolley 用同一套算法，否则
+   * frontLanes / mirror / 散射期间临时加的弹道都会被漏掉，
+   * 玩家看到的数字和实际弹幕量对不上。
+   */
+  P.volleyCount = function (S) {
+    S = S || G.stats || {};
+    const spreadPower = P.power.spread > 0 ? 3 : 0;
+    const n = 2 + (S.extraBullets || 0) + spreadPower;
+
+    return n
+      + (S.frontLanes || 0)
+      + (S.sideGun || 0) * 2
+      + (S.rearGun || 0)
+      + (S.mirror || 0) * Math.min(7, n);
+  };
+
   /* ------------------------------------------------------------
      受击：返回 true 表示"这一下生效了"
      ------------------------------------------------------------ */

@@ -386,9 +386,15 @@
     const S = G.stats || {};
     const slowMul = S.slow > 0 ? Math.max(0.35, 1 - 0.15 * S.slow) : 1;
 
-    for (let i = list.length - 1; i >= 0; i--) {
-      const e = list[i];
-      if (!e) { list.splice(i, 1); continue; }   // 防御：清掉空槽，别让一帧异常把游戏打崩
+    /* 用帧开始时的对象快照更新：DOT 引爆 / 爆裂弹会递归 splice list，
+       直接拿数字下标循环会让当前对象移位后同帧再更新一次，甚至死后继续移动/开火。
+       快照保证「帧开始时存在的每个敌机最多更新一次」，中途新生的下帧再动。 */
+    const frameList = list.slice();
+
+    for (let s = frameList.length - 1; s >= 0; s--) {
+      const e = frameList[s];
+      if (!e || e.alive === false || list.indexOf(e) === -1) continue;
+
       e.t += dt;
       e.stateT += dt;
       if (e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - dt * 5);
@@ -404,21 +410,31 @@
           G.combat.record(e.x, e.y, R.dmg, R.crit, 'dot' + e.uid, 'dot');
         }
 
-        if (R.dead) {
-          G.enemies.damage(i, 9999, { depth: 0, dot: true });
-          continue;
-        }
-
+        // 满层引爆必须先处理：即使这一跳本身致死，卡片也承诺"满层引爆"。
         if (R.burst) {
           if (G.particles) {
             G.particles.sweep(e.x, e.y, R.burst.radius, '#b6ff6e', 0.4, 2.5);
             G.particles.burst(e.x, e.y, { color: '#9ae66e', count: 18, speed: 300 });
           }
           if (G.upgrades.blastAround) {
-            G.upgrades.blastAround(e.x, e.y, R.burst.radius, R.burst.dmg, true);
+            // 必须传对象；旧代码传 boolean true，opts.dot 读不到，
+            // 引爆会给自己重新叠层并刷新持续时间，形成自我循环。
+            G.upgrades.blastAround(e.x, e.y, R.burst.radius, R.burst.dmg,
+              { dot: true, flash: true });
           }
         }
+
+        // 引爆可能已经把当前敌机从列表里带走；任何后续移动/开火都必须停止。
+        let liveIdx = list.indexOf(e);
+        if (e.alive === false || liveIdx === -1) continue;
+
+        if (R.dead || e.hp <= 0) {
+          G.enemies.damage(liveIdx, 9999, { depth: 0, dot: true });
+          continue;
+        }
       }
+
+      // DOT 引爆可能删掉了更低下标的敌机，当前对象仍用引用更新，不会重复处理。
 
       /* ---- 霜冻弹减速 ---- */
       let frostMul = 1;
@@ -513,7 +529,10 @@
       }
 
       /* ---- 出界回收 ---- */
-      if (e.y > G.H + e.r + 30) list.splice(i, 1);
+      if (e.y > G.H + e.r + 30) {
+        const idx = list.indexOf(e);
+        if (idx !== -1) list.splice(idx, 1);
+      }
     }
   }
 

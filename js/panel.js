@@ -37,9 +37,10 @@
       const hitBonus = (G.upgrades && G.upgrades.hitBonus) ? G.upgrades.hitBonus() : 0;
       const dps = (G.combat && G.combat.state) ? G.combat.state.dps : 0;
 
-      const lanes = 2 + (S.extraBullets || 0) +
-        (S.sideGun || 0) * 2 +
-        (S.rearGun || 0);
+      // 弹道数必须和 player.shootVolley 的算法一致（含 frontLanes / mirror / 散射）
+      const lanes = (P && P.volleyCount)
+        ? P.volleyCount(S)
+        : 2 + (S.extraBullets || 0) + (S.sideGun || 0) * 2 + (S.rearGun || 0);
 
       /* ---- 核心 6 行：永远显示 ---- */
       out.push({ label: '伤害', value: (S.damage + hitBonus).toFixed(1) });
@@ -82,35 +83,62 @@
     },
 
     /**
-     * 根据当前画面高度算出版面：先压行高，再截断尾部行。
-     * @returns {{rows:Array, rowH:number, h:number, clipped:number, hidden:number}}
+     * 根据当前画面高度算出版面：先压行高，再截断尾部行；
+     * 屏幕实在太矮就整体上移，再不行就干脆不画。
+     * @returns {{rows:Array, rowH:number, h:number, all:number,
+     *            hidden:number, y:number, visible:boolean}}
      */
     layout() {
       const all = this.rows();
       const H = G.H || 800;
 
-      // 可用高度：上不越 Boss 血条，下不压到底部经验条，也不占超过半屏
-      const bottomLimit = Math.min(H - 68, H * 0.62);
-      const limit = Math.max(60, bottomLimit - Y);
+      /* 下边界要同时满足三件事：
+         ① 不压到底部经验条（H-68）
+         ② 不占超过半屏（H*0.62）
+         ③ 不盖住玩家的默认站位（H - max(84, H*0.15)）
+         矮屏时 ③ 才是真正的约束 —— H-84 比 H-68 更靠上，
+         只按 ①② 算的话面板会正好压在玩家身上。 */
+      const playerY = H - Math.max(84, H * 0.15);
+      const bottomLimit = Math.min(H - 68, H * 0.62, playerY - 6);
+
+      // Y 是固定的面板顶边。屏幕很矮时 bottomLimit - Y 会不够用，
+      // 这时先把面板整体上移（不越过顶栏），而不是硬挤下去压住玩家。
+      let y = Y;
+      const minY = 36;
+      const minNeed = PAD * 2 + 4 * MIN_ROW_H;    // 至少显示 4 行的最小高度
+      let avail = bottomLimit - y;
+
+      if (avail < minNeed) {
+        y = Math.max(minY, bottomLimit - minNeed);
+        avail = bottomLimit - y;
+      }
+
+      // 连"1 行 + 内边距"都放不下：直接不画，好过糊在屏幕中间
+      if (avail < PAD * 2 + MIN_ROW_H || avail <= 0) {
+        return {
+          rows: [], rowH: MIN_ROW_H, h: 0,
+          all: all.length, hidden: all.length, y, visible: false,
+        };
+      }
 
       let rowH = ROW_H;
       let rows = all;
 
       // ① 行高不变时放不下 → 等比压扁
-      if (PAD * 2 + all.length * rowH > limit) {
-        rowH = Math.max(MIN_ROW_H, (limit - PAD * 2) / all.length);
+      if (PAD * 2 + all.length * rowH > avail) {
+        rowH = Math.max(MIN_ROW_H, (avail - PAD * 2) / all.length);
       }
 
       // ② 压到底限还是放不下 → 按重要度截断尾部
-      const maxRows = Math.floor((limit - PAD * 2) / rowH);
+      const maxRows = Math.floor((avail - PAD * 2) / rowH);
       let hidden = 0;
-      if (all.length > maxRows && maxRows >= 4) {
+      if (all.length > maxRows && maxRows >= 1) {
         rows = all.slice(0, maxRows);
         hidden = all.length - rows.length;
       }
 
       const h = PAD * 2 + rows.length * rowH;
-      return { rows, rowH, h, all: all.length, hidden };
+      return { rows, rowH, h, all: all.length, hidden, y, visible: true };
     },
 
     /** 面板总高度（含内边距） */
@@ -121,8 +149,12 @@
     draw() {
       if (G.state === 'menu') return;
 
-      const ctx = G.ctx;
       const L = this.layout();
+      if (!L.visible) return;          // 屏幕太矮，宁可不画
+
+      const ctx = G.ctx;
+      const X0 = X;
+      const Y0 = L.y;
       const rows = L.rows;
       const rowH = L.rowH;
       const h = L.h;
@@ -131,7 +163,7 @@
 
       // 背板
       ctx.beginPath();
-      ctx.rect(X, Y, W, h);
+      ctx.rect(X0, Y0, W, h);
       ctx.fillStyle = 'rgba(7,14,28,0.55)';
       ctx.fill();
       ctx.strokeStyle = 'rgba(120,190,255,0.22)';
@@ -140,7 +172,7 @@
 
       // 左侧装饰色条
       ctx.fillStyle = 'rgba(110,231,168,0.75)';
-      ctx.fillRect(X, Y, 3, h);
+      ctx.fillRect(X0, Y0, 3, h);
 
       // 字随行高一起缩，压扁时也读得清
       const fs = rowH >= 15 ? 11 : rowH >= 13 ? 10 : 9;
@@ -148,15 +180,15 @@
       ctx.textBaseline = 'middle';
 
       for (let i = 0; i < rows.length; i++) {
-        const ry = Y + PAD + i * rowH + rowH / 2;
+        const ry = Y0 + PAD + i * rowH + rowH / 2;
 
         ctx.textAlign = 'left';
         ctx.fillStyle = '#7fa8cc';
-        ctx.fillText(rows[i].label, X + 10, ry);
+        ctx.fillText(rows[i].label, X0 + 10, ry);
 
         ctx.textAlign = 'right';
         ctx.fillStyle = '#dcefff';
-        ctx.fillText(rows[i].value, X + W - 9, ry);
+        ctx.fillText(rows[i].value, X0 + W - 9, ry);
       }
 
       // 被截断时给个提示，免得玩家以为数值消失了
@@ -164,7 +196,7 @@
         ctx.textAlign = 'right';
         ctx.fillStyle = '#5d7fa3';
         ctx.font = '600 ' + Math.max(7, fs - 2) + 'px "Segoe UI", "Microsoft YaHei", sans-serif';
-        ctx.fillText('+' + L.hidden + ' 项（屏幕偏小）', X + W - 9, Y + h - PAD / 2 - 1);
+        ctx.fillText('+' + L.hidden + ' 项（屏幕偏小）', X0 + W - 9, Y0 + h - PAD / 2 - 1);
       }
 
       ctx.restore();
