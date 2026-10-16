@@ -453,6 +453,8 @@
       dotStacks: 0,      // 辐射流：持续伤害层数（辐射/剧毒/燃烧合流）
       dotT: 0,
       dotTick: 0,
+      dotFocus: 0,          // 连续高层叠毒成熟度（秒，满 8 秒）
+      dotErosionPending: 0, // 按时间积累，在下一跳独立释放
       dead: false,
       deathT: 0,
       sway: Math.random() * 6.28,
@@ -525,6 +527,8 @@
 
   function kill(bs) {
     bs.dead = true;
+    bs.dotFocus = 0;
+    bs.dotErosionPending = 0;
     bs.deathT = 1.35;
     bs.hp = 0;
 
@@ -683,8 +687,8 @@
     if (bs.dotStacks > 0 && G.upgrades && G.upgrades.tickDot) {
       const R = G.upgrades.tickDot(bs, dt);
 
-      if (bs.hp > 0 && R.dmg > 0) {
-        bs.hitFlash = Math.max(bs.hitFlash, 0.35);
+      if (R.dmg > 0) {
+        // DOT 不触发高频白闪；致死那一跳同样计入玩家输出。
         if (G.combat && G.combat.record) {
           G.combat.record(bs.x, bs.y - 30, R.dmg, R.crit, 'dotboss', 'dot');
         }
@@ -1205,6 +1209,51 @@
     devourer: drawDevourer,
   };
 
+  // Runtime crops use the existing 52-unit boss coordinate system, never hitboxes.
+  const ART_SIZE = { hive: 136, reaver: 140, dread: 136, arbiter: 146,
+    endwalker: 132, devourer: 138 };
+  function drawArt(ctx, bs, core) {
+    const art = G.art;
+    if (!art) return false;
+    const id = bs.def.id;
+    const size = ART_SIZE[id] || 136;
+    function layer(name, angle, scale) {
+      ctx.save();
+      ctx.rotate(angle || 0);
+      const drawn = art.draw(ctx, name, size * (scale || 1));
+      ctx.restore();
+      return drawn;
+    }
+    let drawn;
+    if (id === 'arbiter' && art.available('arbiter-outer-ring') &&
+        art.available('arbiter-inner-ring') && art.available('arbiter-hull')) {
+      drawn = layer('arbiter-outer-ring', bs.t * 0.9) &&
+        layer('arbiter-inner-ring', -bs.t * 1.5) && layer('arbiter-hull');
+    } else if (id === 'devourer' && art.available('devourer-armor-ring') &&
+        art.available('devourer-intake-iris') && art.available('devourer-hull')) {
+      // Stationary fittings and black intake stay under independently moving jaws.
+      drawn = layer('devourer-hull') && layer('devourer-armor-ring', -bs.t * 0.12) &&
+        layer('devourer-intake-iris', bs.t * 0.5, 0.97 + 0.03 * Math.sin(bs.t * 2.6));
+    } else {
+      const breathe = id === 'endwalker' ? 1 + 0.025 * Math.sin(bs.t * 2.4) : 1;
+      drawn = art.draw(ctx, id, size * breathe);
+    }
+    if (!drawn) return false;
+    // Explicit phase color + pulse without washing out armor or blocking the intake.
+    ctx.save();
+    ctx.globalAlpha *= 0.48 + 0.20 * Math.sin(bs.t * (3 + bs.phase));
+    ctx.strokeStyle = core;
+    ctx.lineWidth = bs.phase === 3 ? 2.2 : 1.4;
+    for (let i = 0; i < bs.phase + 1; i++) {
+      const a = i * Math.PI * 2 / (bs.phase + 1) + bs.t * 0.16;
+      ctx.beginPath();
+      ctx.arc(0, 0, size * 0.5 + 2, a, a + 0.42);
+      ctx.stroke();
+    }
+    ctx.restore();
+    return true;
+  }
+
   function draw() {
     const bs = state.boss;
     if (!bs) return;
@@ -1226,21 +1275,25 @@
     // 底层辉光
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = base * 0.5;
+    ctx.globalAlpha = base * 0.20;
     coreGlow(ctx, 0, 0, 96, pal.core, 0.9 + 0.1 * Math.sin(bs.t * 2));
     ctx.restore();
 
-    (DRAW[bs.def.id] || drawHive)(ctx, bs, pal, core);
+    if (!drawArt(ctx, bs, core)) (DRAW[bs.def.id] || drawHive)(ctx, bs, pal, core);
 
-    // ---- 残血冒烟 ----
-    if (!bs.dead && bs.hp / bs.maxHp < 0.4 && Math.random() < 0.35) {
-      if (G.particles) {
-        G.particles.spark(
-          bs.x + (Math.random() - 0.5) * 96,
-          bs.y + (Math.random() - 0.5) * 54,
-          pal.plate
-        );
+    // ---- 残血火花：独立的确定性视觉，不消耗战斗随机序列 ----
+    if (!bs.dead && bs.hp / bs.maxHp < 0.4) {
+      ctx.save();
+      ctx.fillStyle = pal.accent;
+      for (let i = 0; i < 5; i++) {
+        const age = (bs.t * 1.7 + i * 0.23) % 1;
+        ctx.globalAlpha = base * (1 - age) * 0.65;
+        ctx.beginPath();
+        ctx.arc(Math.sin(i * 2.7) * 43 + age * Math.cos(i) * 8,
+          Math.cos(i * 4.1) * 27 - age * 16, 1.5 * (1 - age) + 0.3, 0, Math.PI * 2);
+        ctx.fill();
       }
+      ctx.restore();
     }
 
     // ---- 辐射流：绿色衰变光环 + 层数 ----
@@ -1248,7 +1301,7 @@
       const S = G.stats || {};
       const k = S.dotMax > 0 ? Math.min(1, bs.dotStacks / S.dotMax) : 0;
 
-      ctx.globalAlpha = base * (0.18 + 0.4 * k);
+      ctx.globalAlpha = base * (0.06 + 0.10 * k);
       ctx.fillStyle = '#9ae66e';
       ctx.beginPath();
       ctx.arc(0, 0, bs.r + 6 + 16 * k, 0, Math.PI * 2);
@@ -1274,7 +1327,7 @@
       const pu = 0.5 + 0.5 * Math.sin(bs.t * 9);
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = base * (0.25 + 0.35 * pu);
+      ctx.globalAlpha = base * (0.07 + 0.10 * pu);
       coreGlow(ctx, 0, 0, 118, '#ff5c7a', 1);
       ctx.restore();
 
@@ -1289,10 +1342,14 @@
 
     // ---- 受击白闪 ----
     if (bs.hitFlash > 0) {
-      ctx.globalAlpha = base * bs.hitFlash * 0.5;
-      ctx.fillStyle = '#ffffff';
+      ctx.globalAlpha = base * bs.hitFlash * 0.6;
+      ctx.strokeStyle = '#fff0df';
+      ctx.lineWidth = 1.8;
       ctx.beginPath();
       ctx.arc(0, 0, bs.r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = base * bs.hitFlash * 0.08;
+      ctx.fillStyle = '#ffffff';
       ctx.fill();
     }
 
@@ -1306,30 +1363,27 @@
 
     const ctx = G.ctx;
     const pal = bs.def.pal;
-    const w = Math.min(440, G.W - 70);
+    // Reserve the top HUD band; the old y=90 bar cut through the ship's center.
+    const w = Math.max(100, Math.min(440, G.W - 160));
     const x = (G.W - w) / 2;
-    const y = 90;
+    const y = 27;
     const ratio = Math.max(0, bs.hp / bs.maxHp);
 
     ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
 
-    // 标题：中文名 + 代号
-    ctx.font = '700 12px "Segoe UI", "Microsoft YaHei", sans-serif';
+    // One compact title replaces the separate level heading during a Boss fight.
+    ctx.font = '700 11px "Segoe UI", "Microsoft YaHei", sans-serif';
     ctx.fillStyle = pal.accent;
-    ctx.shadowColor = 'rgba(' + pal.glow + ',0.9)';
-    ctx.shadowBlur = 12;
-    ctx.fillText('BOSS · ' + bs.name, G.W / 2, y - 22);
+    ctx.shadowColor = 'rgba(' + pal.glow + ',0.5)';
+    ctx.shadowBlur = 3;
+    ctx.fillText('第 ' + bs.level + ' 关 · BOSS ' + bs.name, G.W / 2, y - 7, w);
     ctx.shadowBlur = 0;
-
-    ctx.font = '600 9px "Segoe UI", sans-serif';
-    ctx.fillStyle = 'rgba(' + pal.glow + ',0.75)';
-    ctx.fillText(bs.code + '　·　' + bs.def.title, G.W / 2, y - 10);
 
     // 槽
     ctx.fillStyle = 'rgba(8,6,18,0.8)';
-    ctx.fillRect(x - 2, y, w + 4, 14);
+    ctx.fillRect(x - 2, y, w + 4, 8);
 
     // 血量
     const g = ctx.createLinearGradient(x, 0, x + w, 0);
@@ -1337,7 +1391,7 @@
     g.addColorStop(0.6, pal.edge);
     g.addColorStop(1, '#ffb03a');
     ctx.fillStyle = g;
-    ctx.fillRect(x, y + 2, w * ratio, 10);
+    ctx.fillRect(x, y + 2, w * ratio, 4);
 
     // 阶段刻度
     ctx.strokeStyle = 'rgba(255,255,255,0.35)';
@@ -1346,7 +1400,7 @@
       const mx = x + w * m;
       ctx.beginPath();
       ctx.moveTo(mx, y + 1);
-      ctx.lineTo(mx, y + 13);
+      ctx.lineTo(mx, y + 7);
       ctx.stroke();
     });
 
@@ -1354,13 +1408,14 @@
     ctx.font = '700 10px "Segoe UI", sans-serif';
     ctx.textAlign = 'right';
     ctx.fillStyle = 'rgba(' + pal.glow + ',0.95)';
-    ctx.fillText(['', 'Ⅰ', 'Ⅱ', 'Ⅲ'][bs.phase] || '', x + w + 12, y + 12);
+    ctx.fillText(['', 'Ⅰ', 'Ⅱ', 'Ⅲ'][bs.phase] || '', x + w + 12, y + 8);
 
     // 数值
     ctx.textAlign = 'left';
     ctx.font = '600 9px "Segoe UI", sans-serif';
     ctx.fillStyle = 'rgba(230,240,255,0.7)';
-    ctx.fillText(Math.ceil(bs.hp) + ' / ' + bs.maxHp, x, y + 24);
+    const compactHp = n => n >= 1e8 ? (n / 1e8).toFixed(1) + '亿' : n >= 1e4 ? (n / 1e4).toFixed(1) + '万' : String(Math.ceil(n));
+    ctx.fillText(compactHp(bs.hp) + ' / ' + compactHp(bs.maxHp), x, y + 18);
 
     // 血条下方的状态行：过载倒计时 / 过载中
     const left = Math.max(0, OVERLOAD_AFTER - bs.fightT);
@@ -1368,19 +1423,19 @@
       ctx.textAlign = 'right';
       ctx.font = '700 10px "Segoe UI", "Microsoft YaHei", sans-serif';
       ctx.fillStyle = '#ff8a5c';
-      ctx.fillText('核心过载 · 每秒崩解 ' + Math.round(OVERLOAD_PCT * 100) + '%', x + w, y + 24);
+      ctx.fillText('过载 · −' + Math.round(OVERLOAD_PCT * 100) + '%/秒', x + w, y + 18);
     } else if (left <= 60) {
       ctx.textAlign = 'right';
       ctx.font = '700 10px "Segoe UI", "Microsoft YaHei", sans-serif';
       ctx.fillStyle = '#ffb03a';
-      ctx.fillText('过载倒计时 ' + Math.ceil(left) + ' 秒', x + w, y + 24);
+      ctx.fillText('过载倒计时 ' + Math.ceil(left) + ' 秒', x + w, y + 18);
     }
 
     // 边框
     ctx.textAlign = 'center';
     ctx.strokeStyle = 'rgba(' + pal.glow + ',0.7)';
     ctx.lineWidth = 1;
-    ctx.strokeRect(x - 2.5, y - 0.5, w + 5, 15);
+    ctx.strokeRect(x - 2.5, y - 0.5, w + 5, 9);
 
     ctx.restore();
   }

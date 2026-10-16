@@ -9,7 +9,7 @@
      normal  青蓝光弹        laser  细长高亮激光
      heavy   橙白重型弹      plasma 紫白能量球（溅射）
      frost   冰蓝霜冻弹      venom  翠绿剧毒弹
-     rail    白热轨道弹（极细、超长拖尾）
+     rail    轨道弹（极细、限长拖尾）
 
    波动弹：相位由「世界时间 + 出场横坐标」决定，
    所以同一轮里各弹道会形成连续的蛇形波，不同轮次也不会同相。
@@ -24,12 +24,11 @@
 
   const OFF = 60;
 
-  /**
-   * 「细线模式」阈值：同屏我方子弹超过这个数，就省掉外圈光环与拖尾，
-   * 只画一根细线来保住帧率。颜色仍然逐颗保留（见 lineColor）。
-   * 弹幕流后期实测能到 1500 发，所以这个降级是必须的。
-   */
-  const BULLET_LINE_MODE = 180;
+  // 只影响绘制：高弹速即使同屏弹数很少，也不能画成贯穿屏幕的光柱。
+  const BULLET_LINE_MODE = 120;
+  const MAX_TRAIL = 40;
+  const CALM_TRAIL = 24;
+  let calm = false; // 本局触发后保持低光，避免弹数在阈值附近来回切换造成闪烁。
 
   /** 元素光晕的纯色版：细线模式下用它保留元素身份 */
   const ELEMENT_LINE = {
@@ -39,10 +38,10 @@
     ember: '#ffb060',
   };
   const CORE_LINE = {
-    normal: '#eafcff',
-    laser: '#dff8ff',
-    heavy: '#fff0c8',
-    rail: '#ffffff',
+    normal: '#8bc8dc',
+    laser: '#a9d9e6',
+    heavy: '#dec58d',
+    rail: '#a8d2df',
   };
 
   /** 细线模式下这颗子弹该用什么颜色 */
@@ -61,10 +60,17 @@
   const MIN_LINE = 1.8;
 
   /* ---------------- 工具 ---------------- */
+  // 以像素限制视觉拖尾，不修改子弹位置、速度或扫掠碰撞路径。
+  function trailTime(b, seconds) {
+    const speed = Math.hypot(b.vx, b.vy);
+    return speed > 0 ? Math.min(seconds, (calm ? CALM_TRAIL : MAX_TRAIL) / speed) : 0;
+  }
+
   function strokeLine(b, core, glow, width) {
     const ctx = G.ctx;
-    const tx = b.x - b.vx * 0.014;
-    const ty = b.y - b.vy * 0.014;
+    const t = trailTime(b, 0.014);
+    const tx = b.x - b.vx * t;
+    const ty = b.y - b.vy * t;
 
     ctx.strokeStyle = glow;
     ctx.lineWidth = Math.max(MIN_LINE * 2.2, width * 3);
@@ -85,11 +91,12 @@
   function line(b, color, width, len) {
     const ctx = G.ctx;
     ctx.strokeStyle = color;
-    ctx.lineWidth = Math.max(MIN_LINE, width);
+    ctx.lineWidth = Math.max(MIN_LINE, Math.min(calm ? 2.2 : 6, width));
     ctx.lineCap = 'round';
     ctx.beginPath();
     ctx.moveTo(b.x, b.y);
-    ctx.lineTo(b.x - b.vx * len, b.y - b.vy * len);
+    const t = trailTime(b, len);
+    ctx.lineTo(b.x - b.vx * t, b.y - b.vy * t);
     ctx.stroke();
   }
 
@@ -262,7 +269,8 @@
 
     for (let i = list.length - 1; i >= 0; i--) {
       const b = list[i];
-      if (!b) { list.splice(i, 1); continue; }   // 防御：清掉空槽，别让一帧异常把游戏打崩
+      // 没有战斗模块时，也在下一次 update 回收已越界子弹。
+      if (!b || b.outside) { list.splice(i, 1); continue; }
 
       // 保存本帧起点，combat 用「线段 × 圆」做扫掠碰撞。
       // 轨道弹二级能到 3040px/s，16ms 一帧跨 48.6px；只检查终点会直接穿过小怪。
@@ -302,9 +310,8 @@
         }
       }
 
-      if (b.y < -OFF || b.y > G.H + OFF || b.x < -OFF || b.x > G.W + OFF) {
-        list.splice(i, 1);
-      }
+      // 暂缓到 combat 之后删除，不能丢掉本帧越界前的扫掠命中。
+      b.outside = b.y < -OFF || b.y > G.H + OFF || b.x < -OFF || b.x > G.W + OFF;
     }
   }
 
@@ -314,8 +321,10 @@
     hostile,
     MIN_R,
     MIN_LINE,
+    get calm() { return calm; },
 
     reset() {
+      calm = false;
       friendly.length = 0;
       hostile.length = 0;
     },
@@ -325,31 +334,37 @@
       updateList(hostile, dt);
     },
 
+    cleanup() {
+      for (const list of [friendly, hostile]) {
+        for (let i = list.length - 1; i >= 0; i--) {
+          if (!list[i] || list[i].outside) list.splice(i, 1);
+        }
+      }
+    },
+
     draw() {
       const ctx = G.ctx;
       ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-
-      /* 弹幕流叠起来子弹会非常多，超过阈值就改成细线（省掉外圈光环与拖尾）保帧率。
-         但**保留每颗子弹的颜色** —— 否则堆到上千发时全场是同一种白线，
-         玩家完全看不出自己拿的是等离子 / 霜冻 / 剧毒。
-         实测这几乎不增加开销（本来就要逐颗设置 strokeStyle）。 */
-      const many = friendly.length > BULLET_LINE_MODE;
+      // 非加法混合：大量同色弹道重叠也不会被累加成纯白闪光。
+      ctx.globalCompositeOperation = 'source-over';
+      const P = G.player;
+      if (!calm && (friendly.length > BULLET_LINE_MODE ||
+          (P && P.autoFire && P.effectiveCd && P.effectiveCd() <= 0.09) ||
+          friendly.some((b) => Math.hypot(b.vx, b.vy) > 1800))) calm = true;
+      ctx.globalAlpha = calm ? 0.48 : 0.78;
 
       for (const b of friendly) {
-        if (many) {
-          ctx.strokeStyle = lineColor(b);
-          ctx.lineWidth = Math.max(MIN_LINE, b.r * 0.9);
-          ctx.lineCap = 'round';
-          ctx.beginPath();
-          ctx.moveTo(b.x, b.y);
-          ctx.lineTo(b.x - b.vx * 0.006, b.y - b.vy * 0.006);
-          ctx.stroke();
+        if (calm) {
+          // 保留元素颜色，但不画多层光晕或纯白内芯。
+          line(b, lineColor(b), b.r * 0.6, 0.012);
         } else {
           drawFriendly(b);
         }
       }
 
+      // 敌弹保持原亮度与外观，避免低光模式削弱危险提示。
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'lighter';
       // ---- 敌方：橙红色圆弹 ----
       for (const b of hostile) {
         const pulse = 0.85 + 0.15 * Math.sin(b.t * 18);

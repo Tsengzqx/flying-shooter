@@ -385,7 +385,7 @@
     if (blink) ctx.globalAlpha = 0.35;
 
     // 引擎火焰
-    const flame = 13 + Math.random() * 9;
+    const flame = 13 + (0.5 + 0.5 * Math.sin(G.time * 47)) * 9;
     const fg = ctx.createLinearGradient(0, 10, 0, 12 + flame);
     fg.addColorStop(0, 'rgba(180,245,255,0.95)');
     fg.addColorStop(0.5, 'rgba(90,190,255,0.55)');
@@ -398,7 +398,10 @@
     ctx.closePath();
     ctx.fill();
 
-    // 机身
+    // PNG body only: tilt, invulnerability, engine and shield stay independent.
+    // The 40px alpha silhouette remains close to the original 36 x 37px hull.
+    if (!(G.art && G.art.draw(ctx, 'player', 42, -2))) {
+    // 机身（图片未就绪或损坏时保留原 Canvas 外观）
     const body = ctx.createLinearGradient(0, -20, 0, 16);
     body.addColorStop(0, '#ffffff');
     body.addColorStop(0.42, '#73e8ff');
@@ -434,6 +437,7 @@
     ctx.beginPath();
     ctx.ellipse(-0.9, -6.4, 1.1, 2.3, 0, 0, Math.PI * 2);
     ctx.fill();
+    }
 
     ctx.restore();
 

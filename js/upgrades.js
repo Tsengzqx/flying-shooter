@@ -260,17 +260,17 @@
           也不产生"命中积累"。DOT 想变强，只能靠下面这些增益。
        ------------------------------------------------------------ */
     { id: 'dot_core',     name: '辐射源',   icon: '☢️', build: 'rad', rarity: 'epic',   max: 5,
-      desc: '核心：命中即点燃持续伤害，每层每秒 0.32 伤害，层数上限 +6',
-      delta: '每层每秒伤害 +0.32、上限再 +6' },
+      desc: '核心：命中即点燃，每层每秒 0.32 伤害，上限 +6；超过30层获得高层反应倍率',
+      delta: '每层每秒伤害 +0.32、上限再 +6；3级且辐射投入12层解锁Boss侵蚀' },
     { id: 'dot_stack',    name: '衰变增幅', icon: '🦠', build: 'rad', rarity: 'common', max: 5,
       desc: '每次命中额外叠加 1 层持续伤害',
       delta: '每次命中再 +1 层' },
     { id: 'dot_power',    name: '衰变强化', icon: '🔺', build: 'rad', rarity: 'common', max: 6,
-      desc: '持续伤害 +25%',
-      delta: '持续伤害再 +25%' },
+      desc: '持续伤害 +25%，同时增强已解锁的Boss侵蚀',
+      delta: '持续伤害再 +25%，侵蚀强度继续成长' },
     { id: 'dot_cap',      name: '临界质量', icon: '⚛️', build: 'rad', rarity: 'rare',   max: 4,
-      desc: '层数上限 +10',
-      delta: '层数上限再 +10' },
+      desc: '层数上限 +10，同时增强已解锁的Boss侵蚀',
+      delta: '层数上限再 +10，侵蚀强度继续成长' },
     { id: 'dot_haste',    name: '高频衰变', icon: '📶', build: 'rad', rarity: 'common', max: 4,
       desc: '跳数间隔 −12%',
       delta: '跳数间隔再 −12%' },
@@ -313,13 +313,13 @@
 
     /* ---- 辐射流 · 金 ---- */
     { id: 'gold_dot_meltdown',    name: '熔毁协议', icon: '🌋', build: 'rad', rarity: 'gold', max: 1,
-      desc: '（金色）层数上限翻倍，跳数间隔 −30%，持续伤害 +50%',
+      desc: '（金色）层数上限翻倍，跳数间隔 −30%，DOT平伤 +50%，侵蚀 ×1.2',
       delta: '金色增益已满级' },
     { id: 'gold_dot_plague',      name: '星尘瘟疫', icon: '🌫️', build: 'rad', rarity: 'gold', max: 1,
       desc: '（金色）扩散范围翻倍，传染时保留全部层数',
       delta: '金色增益已满级' },
     { id: 'gold_dot_singularity', name: '奇点衰变', icon: '🕳️', build: 'rad', rarity: 'gold', max: 1,
-      desc: '（金色）持续伤害 ×3',
+      desc: '（金色）DOT平伤 ×3，Boss侵蚀 ×1.35',
       delta: '金色增益已满级' },
 
     /* ================= ⚙️ 通用 · 子弹类型 ================= */
@@ -683,6 +683,8 @@
     if (lv('gold_level_surge') > 0) xpMul *= 2.5;
     S.xpMul = xpMul;
     S.xpCostCut = lv('lv_overflow');
+    // 立即更新经验条门槛；已有经验是否够升级留给 playing update 结算，避免重入 recalc。
+    if (G.progress && G.progress.refreshNeed) G.progress.refreshNeed();
 
     /* ---------- 暴击（上限 100%） ---------- */
     let crit = 0.08 * lv('gen_crit')
@@ -771,6 +773,14 @@
     S.dotPlague   = lv('gold_dot_plague');
     S.dotMeltdown = lv('gold_dot_meltdown');
     S.dotSingularity = lv('gold_dot_singularity');
+
+    // 后期抗指数血量的专精通道，不吃子弹数值或击破倍率。
+    // 每秒预算单独封顶，DOT 暴击/双跳/频率/引爆都不能再次放大它。
+    S.dotBossPct = dotLv >= 3 && buildCount('rad') >= 12
+      ? Math.min(0.025, 0.0008 * dotLv
+          * (1 + 0.25 * lv('dot_power')) * (1 + 0.12 * lv('dot_cap'))
+          * (S.dotMeltdown ? 1.2 : 1) * (S.dotSingularity ? 1.35 : 1))
+      : 0;
 
     // 面板/其它模块判断"DOT 是否激活"只看这一个字段
     S.dotActive = dotOn;
@@ -1004,8 +1014,7 @@
     syncSummons();
 
     // 先关闭当前强化面板、消耗掉这一次选择，再结算会产生新升级的副作用。
-    // 否则「飞升」在 state=upgrade 时调用 progress.addXp()，会被 addXp 的
-    // `G.state !== 'playing'` 保护直接拒绝，卡片拿到了但等级完全不变。
+    // 「飞升」的直接升级接口也只在 playing 状态结算。
     state.pending = false;
     G.state = 'playing';
     G.screen = null;
@@ -1016,11 +1025,7 @@
 
     // 金色：飞升 —— 立刻提升 3 级（必须在恢复 playing 之后结算）
     if (id === 'gold_level_ascend' && G.progress) {
-      let need = 0;
-      for (let k = 0; k < 3; k++) {
-        need += G.progress.xpFor(G.progress.state.level + k);
-      }
-      G.progress.addXp(need);
+      G.progress.addLevels(3);
     }
 
     const P = G.player;
@@ -1151,6 +1156,13 @@
     const S = G.stats;
     if (!t || !S || !S.dotActive || !(S.dotPerHit > 0) || !(stacks > 0)) return 0;
 
+    // 过期后重新点燃不能继承旧层数、成熟度或未释放的侵蚀预算。
+    if (!(t.dotT > 0)) {
+      t.dotStacks = 0;
+      t.dotFocus = 0;
+      t.dotErosionPending = 0;
+      t.dotTick = 0;
+    }
     const before = t.dotStacks || 0;
     t.dotStacks = Math.min(S.dotMax, before + stacks);
     t.dotT = S.dotDuration || 4;
@@ -1167,6 +1179,22 @@
     return Math.max(0.05, iv);
   }
 
+  /** 高层反应：前 30 层不变，专精堆层后多一个独立伤害乘区。 */
+  function dotStackMultiplier(stacks) {
+    return 1 + Math.pow(Math.max(0, stacks - 30) / 50, 1.4);
+  }
+
+  /** 当前 Boss 的侵蚀比例/秒；仅真实 Boss、高层持续叠毒可用。 */
+  function dotBossRate(t) {
+    const S = G.stats || {};
+    if (!S.dotActive || !(S.dotBossPct > 0) || !t || t.dead || !(t.hp > 0) ||
+        !(t.dotT > 0) || t.dotStacks < 40 || !Number.isFinite(t.maxHp) ||
+        !(t.maxHp > 0) || !G.boss || G.boss.state.boss !== t) return 0;
+    const late = Math.max(0, Math.min(1, (t.level - 10) / 30));
+    const saturation = Math.pow(Math.min(1, t.dotStacks / 100), 2);
+    return S.dotBossPct * late * saturation * Math.min(1, (t.dotFocus || 0) / 8);
+  }
+
   /**
    * 通用 DOT 结算：跳数 + 跳伤 + DOT 专属暴击 + 双重 + 临界引爆
    * 敌机和 Boss 共用同一套公式，避免两边数值漂移。
@@ -1178,19 +1206,31 @@
    *    用固定参考间隔后：DPS = 层数 × 每层DPS × (参考间隔 / 实际间隔)，
    *    间隔越短，DPS 越高。
    *
-   * @returns {{dead:boolean, dmg:number, crit:boolean, burst:null|{radius:number,dmg:number}}}
+   * @returns {{dead:boolean, dmg:number, flatDmg:number, erosion:number, crit:boolean, burst:null|{radius:number,dmg:number}}}
    */
   function tickDot(t, dt) {
-    const out = { dead: false, dmg: 0, crit: false, burst: null };
-    if (!t || !(t.dotStacks > 0)) return out;
-
+    const out = { dead: false, dmg: 0, flatDmg: 0, erosion: 0, crit: false, burst: null };
     const S = G.stats || {};
+    if (!t) return out;
+    if (!(t.dotStacks > 0) || !S.dotActive || !(t.dotT > dt)) {
+      t.dotStacks = 0;
+      t.dotT = 0;
+      t.dotTick = 0;
+      t.dotFocus = 0;
+      t.dotErosionPending = 0;
+      return out;
+    }
 
     t.dotT -= dt;
-    if (t.dotT <= 0) {
-      t.dotStacks = 0;
-      t.dotTick = 0;
-      return out;
+    // 每个目标每帧只按实际游戏时间积累一次，不能按命中次数或跳频发预算。
+    const rateBefore = dotBossRate(t);
+    if (S.dotBossPct > 0 && t.dotStacks >= 40 && G.boss && G.boss.state.boss === t && t.level > 10) {
+      t.dotFocus = Math.min(8, (t.dotFocus || 0) + dt);
+      t.dotErosionPending = (t.dotErosionPending || 0)
+        + t.maxHp * (rateBefore + dotBossRate(t)) * 0.5 * dt;
+    } else {
+      t.dotFocus = 0;
+      t.dotErosionPending = 0;
     }
 
     t.dotTick -= dt;
@@ -1200,7 +1240,8 @@
     t.dotTick = iv;
 
     // 每跳伤害 = 层数 × 每层每秒伤害 × 固定参考间隔
-    let tickDmg = t.dotStacks * (S.dotPerStack || 0) * DOT_REF_INTERVAL;
+    const stackMul = dotStackMultiplier(t.dotStacks);
+    let tickDmg = t.dotStacks * (S.dotPerStack || 0) * DOT_REF_INTERVAL * stackMul;
 
     // DOT 专属暴击：只吃"致命衰变 / 毁伤衰变"，和子弹暴击完全无关
     if (S.dotCritChance > 0 && Math.random() < S.dotCritChance) {
@@ -1214,6 +1255,11 @@
       out.crit = true;      // 双跳也用高亮飘字，让玩家看得见
     }
 
+    // 侵蚀在暴击/双跳之后独立加入；绝不传入引爆、扩散或其它乘区。
+    out.flatDmg = tickDmg;
+    out.erosion = t.dotErosionPending || 0;
+    t.dotErosionPending = 0;
+    tickDmg += out.erosion;
     t.hp -= tickDmg;
     out.dmg = tickDmg;
     if (t.hp <= 0) out.dead = true;
@@ -1231,7 +1277,7 @@
     if (S.dotBurst > 0 && t.dotStacks >= S.dotMax) {
       out.burst = {
         radius: 60 + 22 * S.dotBurst,
-        dmg: t.dotStacks * 0.6 * S.dotBurst * (S.dotPerStack || 0) * DOT_REF_INTERVAL * 6,
+        dmg: t.dotStacks * 0.6 * S.dotBurst * (S.dotPerStack || 0) * DOT_REF_INTERVAL * 6 * stackMul,
       };
       t.dotStacks = Math.floor(t.dotStacks / 2);
       t.dotTick = Math.max(0.05, iv);
@@ -1740,6 +1786,8 @@
     applyDot,
     tickDot,
     dotTickInterval,
+    dotStackMultiplier,
+    dotBossRate,
     pointDefRadius,
     dotFieldRadius,
   };

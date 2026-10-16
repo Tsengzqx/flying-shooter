@@ -1,0 +1,259 @@
+{
+  "schemaVersion": 1,
+  "generator": "node tools/prepare-art.js (ART_RENDER_MODULE=@resvg/resvg-js path)",
+  "normalization": "alpha bounds, 4% total padding; radial layers share original center pivot",
+  "assets": [
+    {
+      "id": "player",
+      "source": "player/player.svg",
+      "pixels": 256,
+      "bytes": 40029,
+      "cropViewBox": [
+        4.5625,
+        7.0625,
+        246.875,
+        246.875
+      ]
+    },
+    {
+      "id": "scout",
+      "source": "enemies/scout.svg",
+      "pixels": 256,
+      "bytes": 42080,
+      "cropViewBox": [
+        55.47916666666666,
+        55.47916666666666,
+        401.0416666666667,
+        401.0416666666667
+      ]
+    },
+    {
+      "id": "zigzag",
+      "source": "enemies/zigzag.svg",
+      "pixels": 256,
+      "bytes": 46829,
+      "cropViewBox": [
+        53.395833333333314,
+        49.395833333333314,
+        405.20833333333337,
+        405.20833333333337
+      ]
+    },
+    {
+      "id": "gunship",
+      "source": "enemies/gunship.svg",
+      "pixels": 256,
+      "bytes": 49720,
+      "cropViewBox": [
+        52.35416666666666,
+        55.35416666666666,
+        407.2916666666667,
+        407.2916666666667
+      ]
+    },
+    {
+      "id": "diver",
+      "source": "enemies/diver.svg",
+      "pixels": 256,
+      "bytes": 46578,
+      "cropViewBox": [
+        6.125,
+        7.125,
+        243.75,
+        243.75
+      ]
+    },
+    {
+      "id": "weaver",
+      "source": "enemies/weaver.svg",
+      "pixels": 256,
+      "bytes": 37723,
+      "cropViewBox": [
+        51.3125,
+        40.3125,
+        409.375,
+        409.375
+      ]
+    },
+    {
+      "id": "splitter",
+      "source": "enemies/splitter.svg",
+      "pixels": 256,
+      "bytes": 63951,
+      "cropViewBox": [
+        67.97916666666666,
+        69.97916666666666,
+        376.0416666666667,
+        376.0416666666667
+      ]
+    },
+    {
+      "id": "escort",
+      "source": "enemies/escort.svg",
+      "pixels": 256,
+      "bytes": 51015,
+      "cropViewBox": [
+        52.875,
+        53.375,
+        406.25,
+        406.25
+      ]
+    },
+    {
+      "id": "hive",
+      "source": "bosses/hive.svg",
+      "pixels": 512,
+      "bytes": 161895,
+      "cropViewBox": [
+        54.3125,
+        54.3125,
+        659.375,
+        659.375
+      ]
+    },
+    {
+      "id": "reaver",
+      "source": "bosses/reaver.svg",
+      "pixels": 512,
+      "bytes": 146242,
+      "cropViewBox": [
+        37.125,
+        47.125,
+        693.75,
+        693.75
+      ]
+    },
+    {
+      "id": "dread",
+      "source": "bosses/dread.svg",
+      "pixels": 512,
+      "bytes": 148070,
+      "cropViewBox": [
+        41.29166666666663,
+        45.79166666666663,
+        685.4166666666667,
+        685.4166666666667
+      ]
+    },
+    {
+      "id": "arbiter",
+      "source": "bosses/arbiter.svg",
+      "pixels": 512,
+      "bytes": 194433,
+      "cropViewBox": [
+        40.770833333333314,
+        40.770833333333314,
+        686.4583333333334,
+        686.4583333333334
+      ]
+    },
+    {
+      "id": "arbiter-outer-ring",
+      "source": "bosses/arbiter.svg",
+      "pixels": 512,
+      "bytes": 91038,
+      "cropViewBox": [
+        40.770833333333314,
+        40.770833333333314,
+        686.4583333333334,
+        686.4583333333334
+      ]
+    },
+    {
+      "id": "arbiter-inner-ring",
+      "source": "bosses/arbiter.svg",
+      "pixels": 512,
+      "bytes": 72390,
+      "cropViewBox": [
+        40.770833333333314,
+        40.770833333333314,
+        686.4583333333334,
+        686.4583333333334
+      ]
+    },
+    {
+      "id": "arbiter-hull",
+      "source": "bosses/arbiter.svg",
+      "pixels": 512,
+      "bytes": 44537,
+      "cropViewBox": [
+        40.770833333333314,
+        40.770833333333314,
+        686.4583333333334,
+        686.4583333333334
+      ]
+    },
+    {
+      "id": "endwalker",
+      "source": "bosses/endwalker.svg",
+      "pixels": 512,
+      "bytes": 139469,
+      "cropViewBox": [
+        39.208333333333314,
+        39.958333333333314,
+        689.5833333333334,
+        689.5833333333334
+      ]
+    },
+    {
+      "id": "devourer",
+      "source": "bosses/devourer.svg",
+      "pixels": 512,
+      "bytes": 192279,
+      "cropViewBox": [
+        41.29166666666663,
+        41.29166666666663,
+        685.4166666666667,
+        685.4166666666667
+      ]
+    },
+    {
+      "id": "devourer-armor-ring",
+      "source": "bosses/devourer.svg",
+      "pixels": 512,
+      "bytes": 108064,
+      "cropViewBox": [
+        41.29166666666663,
+        41.29166666666663,
+        685.4166666666667,
+        685.4166666666667
+      ]
+    },
+    {
+      "id": "devourer-intake-iris",
+      "source": "bosses/devourer.svg",
+      "pixels": 512,
+      "bytes": 47409,
+      "cropViewBox": [
+        41.29166666666663,
+        41.29166666666663,
+        685.4166666666667,
+        685.4166666666667
+      ]
+    },
+    {
+      "id": "devourer-hull",
+      "source": "bosses/devourer.svg",
+      "pixels": 512,
+      "bytes": 102091,
+      "cropViewBox": [
+        41.29166666666663,
+        41.29166666666663,
+        685.4166666666667,
+        685.4166666666667
+      ]
+    },
+    {
+      "id": "elite-overlay",
+      "source": "effects/elite-overlay.svg",
+      "pixels": 256,
+      "bytes": 13246,
+      "cropViewBox": [
+        12.770833333333314,
+        3.2708333333333144,
+        486.45833333333337,
+        486.45833333333337
+      ]
+    }
+  ]
+}

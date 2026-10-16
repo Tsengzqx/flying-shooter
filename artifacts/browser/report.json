@@ -1,0 +1,213 @@
+{
+  "browser": "Microsoft Edge (real Chromium browser, headless)",
+  "scope": "real pointer/keyboard play plus explicit debug-spawn coverage for late Boss phases; not a complete unaided 60-level run",
+  "checks": [
+    "all 21 source textures actually load and decode in Edge",
+    "real keyboard input moves the PNG player",
+    "normal gameplay emits bullets and draws enemy PNGs",
+    "pause freezes real browser gameplay and background",
+    "all seven enemy PNGs and elite overlay draw in real browser",
+    "hive matches its planet during live Boss fight",
+    "hive transitions to phase 3 without losing its sprite",
+    "reaver matches its planet during live Boss fight",
+    "reaver transitions to phase 3 without losing its sprite",
+    "dread matches its planet during live Boss fight",
+    "dread transitions to phase 3 without losing its sprite",
+    "arbiter matches its planet during live Boss fight",
+    "arbiter transitions to phase 3 without losing its sprite",
+    "endwalker matches its planet during live Boss fight",
+    "endwalker transitions to phase 3 without losing its sprite",
+    "endwalker cloak still affects sprite visibility",
+    "devourer matches its planet during live Boss fight",
+    "devourer transitions to phase 3 without losing its sprite",
+    "compact Boss header replaces the duplicate HTML level title",
+    "independent rotating Boss layers are drawn, not static fallback",
+    "Boss death eventually clears the planet",
+    "menu has no stale Boss or planet",
+    "gameover/restart keeps textures ready without reloading",
+    "touch-sized browser accepts pointer movement",
+    "DPR2 portrait canvas dimensions and art are valid",
+    "orientation resize preserves active Boss and planet",
+    "failed PNG requests fall back without JS errors or blocking play",
+    "offline single-file decodes all 21 embedded textures",
+    "no browser JS errors or missing normal assets"
+  ],
+  "screenshots": [
+    "01-normal-play.png",
+    "02-enemy-formation.png",
+    "boss-hive.png",
+    "boss-reaver.png",
+    "boss-dread.png",
+    "boss-arbiter.png",
+    "boss-endwalker.png",
+    "boss-endwalker-cloaked.png",
+    "boss-devourer.png",
+    "03-mobile-boss.png",
+    "04-landscape-boss.png",
+    "05-image-failure-fallback.png",
+    "06-offline-single-file.png"
+  ],
+  "errors": [],
+  "version": "155.0.4283.45",
+  "sourceTextures": {
+    "total": 21,
+    "loaded": 21,
+    "failed": 0,
+    "pending": 0
+  },
+  "offlineTextures": {
+    "loaded": 21,
+    "total": 21,
+    "embedded": true
+  },
+  "drawCounts": [
+    {
+      "id": "player",
+      "state": "loaded",
+      "width": 256,
+      "height": 256,
+      "draws": 10731
+    },
+    {
+      "id": "scout",
+      "state": "loaded",
+      "width": 256,
+      "height": 256,
+      "draws": 17975
+    },
+    {
+      "id": "zigzag",
+      "state": "loaded",
+      "width": 256,
+      "height": 256,
+      "draws": 48
+    },
+    {
+      "id": "gunship",
+      "state": "loaded",
+      "width": 256,
+      "height": 256,
+      "draws": 48
+    },
+    {
+      "id": "diver",
+      "state": "loaded",
+      "width": 256,
+      "height": 256,
+      "draws": 48
+    },
+    {
+      "id": "weaver",
+      "state": "loaded",
+      "width": 256,
+      "height": 256,
+      "draws": 48
+    },
+    {
+      "id": "splitter",
+      "state": "loaded",
+      "width": 256,
+      "height": 256,
+      "draws": 48
+    },
+    {
+      "id": "escort",
+      "state": "loaded",
+      "width": 256,
+      "height": 256,
+      "draws": 48
+    },
+    {
+      "id": "hive",
+      "state": "loaded",
+      "width": 512,
+      "height": 512,
+      "draws": 1043
+    },
+    {
+      "id": "reaver",
+      "state": "loaded",
+      "width": 512,
+      "height": 512,
+      "draws": 1039
+    },
+    {
+      "id": "dread",
+      "state": "loaded",
+      "width": 512,
+      "height": 512,
+      "draws": 1057
+    },
+    {
+      "id": "arbiter",
+      "state": "loaded",
+      "width": 512,
+      "height": 512,
+      "draws": 0
+    },
+    {
+      "id": "endwalker",
+      "state": "loaded",
+      "width": 512,
+      "height": 512,
+      "draws": 1062
+    },
+    {
+      "id": "devourer",
+      "state": "loaded",
+      "width": 512,
+      "height": 512,
+      "draws": 0
+    },
+    {
+      "id": "elite-overlay",
+      "state": "loaded",
+      "width": 256,
+      "height": 256,
+      "draws": 48
+    },
+    {
+      "id": "arbiter-outer-ring",
+      "state": "loaded",
+      "width": 512,
+      "height": 512,
+      "draws": 1038
+    },
+    {
+      "id": "arbiter-inner-ring",
+      "state": "loaded",
+      "width": 512,
+      "height": 512,
+      "draws": 1038
+    },
+    {
+      "id": "arbiter-hull",
+      "state": "loaded",
+      "width": 512,
+      "height": 512,
+      "draws": 1038
+    },
+    {
+      "id": "devourer-armor-ring",
+      "state": "loaded",
+      "width": 512,
+      "height": 512,
+      "draws": 1387
+    },
+    {
+      "id": "devourer-intake-iris",
+      "state": "loaded",
+      "width": 512,
+      "height": 512,
+      "draws": 1387
+    },
+    {
+      "id": "devourer-hull",
+      "state": "loaded",
+      "width": 512,
+      "height": 512,
+      "draws": 1387
+    }
+  ],
+  "status": "passed"
+}

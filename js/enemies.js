@@ -225,6 +225,10 @@
       e.amp = 26 + Math.random() * 26;
       e.freq = 0.7 + Math.random() * 0.5;
     } else if (type === 'diver') {
+      // 前十关多留反应时间；11～20 关平滑恢复原俯冲强度。
+      const ramp = Math.max(0, Math.min(1, (lv - EASY_UNTIL) / TIER_LEN));
+      e.diveSpeed = (430 + lv * 8) * (0.6 + 0.4 * ramp);
+      e.hoverDuration = 1.25 - 0.5 * ramp;
       e.vy = 98 + lv * 1.2;
       e.hoverY = 120 + Math.random() * 150;
       e.fireCd = 1.4;
@@ -464,14 +468,14 @@
             if (e.y >= e.hoverY) { e.y = e.hoverY; e.state = 'hover'; e.stateT = 0; }
           } else if (e.state === 'hover') {
             e.x = e.baseX + Math.sin(e.t * 1.6) * 40;
-            if (e.stateT > 0.75) {
+            if (e.stateT > e.hoverDuration) {
               e.state = 'dive';
               e.stateT = 0;
               // 锁定玩家方向
               const dx = P ? P.x - e.x : 0;
               const dy = P ? P.y - e.y : 300;
               const len = Math.hypot(dx, dy) || 1;
-              const sp = 430 + wave.level * 8;
+              const sp = e.diveSpeed;
               e.vx = (dx / len) * sp;
               e.vy = Math.max(160, (dy / len) * sp);
             }
@@ -540,6 +544,7 @@
      绘制
      ============================================================ */
   function drawScout(ctx) {
+    if (G.art && G.art.draw(ctx, 'scout', 29)) return;
     ctx.fillStyle = '#ff8a5c';
     ctx.beginPath();
     ctx.moveTo(0, 14);
@@ -559,6 +564,7 @@
 
   function drawZigzag(ctx, e) {
     ctx.rotate(Math.sin(e.t * 2.4) * 0.22);
+    if (G.art && G.art.draw(ctx, 'zigzag', 33)) return;
     ctx.fillStyle = '#c07dff';
     ctx.beginPath();
     ctx.moveTo(0, 15);
@@ -584,6 +590,7 @@
   }
 
   function drawGunship(ctx, e) {
+    if (G.art && G.art.draw(ctx, 'gunship', 50)) return;
     ctx.fillStyle = '#ff5c7a';
     ctx.beginPath();
     ctx.moveTo(0, 24);
@@ -614,6 +621,7 @@
   function drawDiver(ctx, e) {
     // 俯冲前会先"抬头"蓄力
     if (e.state === 'hover') ctx.rotate(Math.sin(e.t * 10) * 0.12);
+    if (G.art && G.art.draw(ctx, 'diver', 35, 1)) return;
 
     ctx.fillStyle = '#ffd166';
     ctx.beginPath();
@@ -641,6 +649,7 @@
   function drawWeaver(ctx, e) {
     const sway = Math.sin(e.t * 2) * 0.1;
     ctx.rotate(sway);
+    if (G.art && G.art.draw(ctx, 'weaver', 42, -1)) return;
 
     ctx.fillStyle = '#5ce1e6';
     ctx.beginPath();
@@ -668,6 +677,7 @@
 
   function drawSplitter(ctx, e) {
     const wob = 1 + Math.sin(e.t * 4) * 0.06;
+    if (G.art && G.art.draw(ctx, 'splitter', 42 * wob)) return;
     ctx.fillStyle = '#9ae66e';
     ctx.beginPath();
     ctx.ellipse(0, 0, 20 * wob, 17 * wob, 0, 0, Math.PI * 2);
@@ -690,6 +700,7 @@
   }
 
   function drawEscort(ctx, e) {
+    if (G.art && G.art.draw(ctx, 'escort', 76, 2)) return;
     // 侧翼吊舱
     ctx.fillStyle = '#7a2f5c';
     ctx.strokeStyle = '#ff9de2';
@@ -780,7 +791,9 @@
 
     if (e.elite) {
       const pulse = 0.55 + 0.45 * Math.sin(e.t * 5);
+      const textured = G.art && G.art.draw(ctx, 'elite-overlay', designR * 3.0);
       ctx.save();
+      ctx.globalAlpha *= textured ? 0.28 : 1;
       ctx.globalCompositeOperation = 'lighter';
       const g = ctx.createRadialGradient(0, 0, designR * 0.6, 0, 0, designR * 1.9);
       g.addColorStop(0, 'rgba(255,209,102,0.30)');
@@ -791,11 +804,13 @@
       ctx.fill();
       ctx.restore();
 
-      ctx.strokeStyle = 'rgba(255,209,102,' + (0.5 + 0.4 * pulse).toFixed(2) + ')';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(0, 0, designR * 1.28, 0, Math.PI * 2);
-      ctx.stroke();
+      if (!textured) {
+        ctx.strokeStyle = 'rgba(255,209,102,' + (0.5 + 0.4 * pulse).toFixed(2) + ')';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, designR * 1.28, 0, Math.PI * 2);
+        ctx.stroke();
+      }
     }
 
     // 血条：精英/护卫舰，或已经受过伤的大怪
@@ -817,6 +832,9 @@
       ctx.fillText('★', 0, -designR - 20);
     }
   }
+
+  const ENGINE_Y = { scout: -12, zigzag: -12, gunship: -19, diver: -15,
+    weaver: -11, splitter: -17, escort: -32 };
 
   const DRAW = {
     scout: drawScout,
@@ -905,15 +923,16 @@
         const designR = e.art || e.r;
 
         // 尾焰
-        const f = 8 + Math.random() * 6;
-        const g = ctx.createLinearGradient(0, -12, 0, -12 - f);
+        const f = 8 + (0.5 + 0.5 * Math.sin(e.t * 41 + e.uid * 2.4)) * 6;
+        const nozzle = ENGINE_Y[e.type] || -12;
+        const g = ctx.createLinearGradient(0, nozzle, 0, nozzle - f);
         g.addColorStop(0, 'rgba(255,180,120,0.75)');
         g.addColorStop(1, 'rgba(255,80,40,0)');
         ctx.fillStyle = g;
         ctx.beginPath();
-        ctx.moveTo(-4, -12);
-        ctx.lineTo(4, -12);
-        ctx.lineTo(0, -12 - f);
+        ctx.moveTo(-4, nozzle);
+        ctx.lineTo(4, nozzle);
+        ctx.lineTo(0, nozzle - f);
         ctx.closePath();
         ctx.fill();
 
@@ -925,10 +944,15 @@
 
         // 受击白闪
         if (e.hitFlash > 0) {
-          ctx.globalAlpha = e.hitFlash * 0.85;
-          ctx.fillStyle = '#ffffff';
+          // A short rim flash, not an opaque disk over the detailed hull.
+          ctx.globalAlpha = e.hitFlash * 0.55;
+          ctx.strokeStyle = '#ffe8d0';
+          ctx.lineWidth = 1.5;
           ctx.beginPath();
-          ctx.arc(0, 0, designR * 0.9, 0, Math.PI * 2);
+          ctx.arc(0, 0, designR * 0.95, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.globalAlpha = e.hitFlash * 0.10;
+          ctx.fillStyle = '#ffffff';
           ctx.fill();
           ctx.globalAlpha = 1;
         }

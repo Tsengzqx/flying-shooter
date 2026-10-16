@@ -67,6 +67,11 @@
 
       // 辐射流（持续伤害）：拿到辐射源才显示
       if (S.dotActive) {
+        if (S.dotBossPct > 0) {
+          const boss = G.boss && G.boss.state.boss;
+          const rate = boss && G.upgrades ? G.upgrades.dotBossRate(boss) : S.dotBossPct;
+          out.push({ label: 'Boss 侵蚀', value: (boss ? '' : '≤') + (rate * 100).toFixed(2) + '%/s' });
+        }
         out.push({ label: '持续伤害', value: (S.dotPerStack || 0).toFixed(2) + '/层' });
         out.push({ label: '每次叠层', value: '×' + (S.dotPerHit || 0) });
         out.push({ label: '层数上限', value: String(S.dotMax || 0) });

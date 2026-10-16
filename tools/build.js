@@ -173,7 +173,23 @@ function build() {
 
   /* ---- 2. 内联脚本（必须保持原有顺序） ---- */
   html = html.replace(/<script\s+src="([^"]+)"\s*><\/script>/g, (m, src) => {
-    const raw = read(src);
+    let raw = read(src);
+    if (src === 'js/art.js') {
+      const marker = /\/\* ART_SOURCES_BEGIN \*\/([\s\S]*?)\/\* ART_SOURCES_END \*\//;
+      const match = raw.match(marker);
+      if (!match) throw new Error('舰船资源表标记丢失');
+      const sources = JSON.parse(match[1]);
+      const runtimeRoot = path.resolve(ROOT, 'assets/art/runtime') + path.sep;
+      for (const id of Object.keys(sources)) {
+        const file = path.resolve(ROOT, sources[id]);
+        if (!file.startsWith(runtimeRoot) || path.extname(file) !== '.png') throw new Error('非法舰船纹理路径：' + sources[id]);
+        const png = fs.readFileSync(file);
+        if (png.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a') throw new Error('不是PNG纹理：' + sources[id]);
+        inlined.push('png  ' + sources[id]);
+        sources[id] = 'data:image/png;base64,' + png.toString('base64');
+      }
+      raw = raw.replace(marker, '/* ART_SOURCES_BEGIN */' + JSON.stringify(sources) + '/* ART_SOURCES_END */');
+    }
     if (raw.indexOf('</script') !== -1) {
       throw new Error(src + ' 中含有 </script，无法安全内联');
     }
@@ -323,7 +339,7 @@ function collectSource() {
     'index.html', 'README.md', 'CHANGELOG.md', 'LICENSE',
     'netlify.toml', 'robots.txt',
   ];
-  const DIR_LIST = ['css', 'js', 'docs'];
+  const DIR_LIST = ['css', 'js', 'docs', 'assets/art/runtime'];
 
   const out = [];
   const add = (rel, full) => {

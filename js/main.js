@@ -5,7 +5,7 @@
      · 画布与自适应（含高 DPI）
      · 游戏主循环（requestAnimationFrame + 增量时间）
      · 状态机：menu / playing / paused / gameover
-     · 三层视差星空背景
+     · 宇宙背景模块接入与基础星空兜底
      · HUD 与三个界面（主菜单、暂停、结算）的切换
      · 最高分本地存储
 
@@ -53,7 +53,8 @@ function resize() {
   // 之后所有绘制都用逻辑坐标
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
 
-  stars.rebuild();
+  if (Game.background && Game.background.resize) Game.background.resize(W, H);
+  else stars.rebuild();
 }
 window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', () => setTimeout(resize, 120));
@@ -353,6 +354,7 @@ Game.stats = {
   dotPlague: 0,          // 金色：星尘瘟疫
   dotMeltdown: 0,        // 金色：熔毁协议
   dotSingularity: 0,     // 金色：奇点衰变
+  dotBossPct: 0,         // 专精解锁：成熟满层侵蚀的最大生命/秒上限（独立预算）
   /* 流派 · 弹幕 */
   swarmAmmo: 0,
   /* 流派 · 道具 */
@@ -456,6 +458,12 @@ const hud = {
   _cache: {},
 
   update() {
+    // Boss HUD includes the level in its compact header; avoid two overlapping titles.
+    const bossVisible = !!(Game.state !== 'menu' && Game.boss && Game.boss.state && Game.boss.state.boss && !Game.boss.state.boss.dead);
+    if (this._cache.bossVisible !== bossVisible) {
+      this.level.classList.toggle('hidden', bossVisible);
+      this._cache.bossVisible = bossVisible;
+    }
     const v = {
       score: Game.score,
       lives: Game.lives,
@@ -547,7 +555,7 @@ function startGame() {
   // 通知各模块重置（模块不存在就跳过，方便逐个开发）
   // upgrades 放最前面：先把属性表恢复成默认值，后面的模块才拿到干净的数值
   for (const key of ['upgrades', 'progress', 'input', 'player', 'bullets',
-                     'enemies', 'boss', 'combat', 'powerups']) {
+                     'enemies', 'boss', 'combat', 'powerups', 'background']) {
     const m = Game[key];
     if (m && typeof m.reset === 'function') m.reset();
   }
@@ -624,15 +632,22 @@ function togglePause() {
 
 /** 回到主菜单 */
 function toMenu() {
+  // 本局结束时统一最高分，再渲染菜单。不要在局中同步 highScore，
+  // 否则 gameOver 的新纪录判断会提前失去旧纪录基准。
+  Game.highScore = Math.max(Game.highScore, Game.save.bestScore, Game.score);
+  Game.save.recordProgress(Game.level, Game.highScore);
+  try {
+    localStorage.setItem('starstrike.high', String(Game.highScore));
+  } catch (e) { /* 忽略写入失败 */ }
+
   Game.state = 'menu';
   Game.screen = 'menu';
   document.getElementById('menu-best').textContent = Game.highScore.toLocaleString();
-  // 中途退出也要把这一局的关卡记进累计战绩（否则只有"打死"才算数）
-  Game.save.recordProgress(Game.level, Game.score);
   // 清掉战斗状态：否则 Boss 血条 / 敌机 / 子弹会残留到下一局开始
   if (Game.boss && Game.boss.reset) Game.boss.reset();
   if (Game.bullets && Game.bullets.reset) Game.bullets.reset();
   if (Game.enemies && Game.enemies.reset) Game.enemies.reset();
+  if (Game.background && Game.background.reset) Game.background.reset();
   renderSaveStats('menu-stats');
   hud.invalidate();
   syncUI();
@@ -707,8 +722,9 @@ canvas.addEventListener('pointerdown', () => {
 function update(dt) {
   tGlobal += dt;
 
-  // 星空永远滚动（暂停时除外，暂停由外层拦住）
-  stars.update(dt);
+  // 宇宙背景只负责视觉，Boss星球转场不参与战斗；模块自身处理强化/暂停冻结。
+  if (Game.background && Game.background.update) Game.background.update(dt);
+  else stars.update(dt);
   shake.update(dt);
 
   // 非战斗状态：只让残余粒子播完
@@ -741,15 +757,18 @@ function update(dt) {
 }
 
 function draw() {
-  // 背景
-  const bg = ctx.createLinearGradient(0, 0, 0, H);
-  bg.addColorStop(0, '#050a1c');
-  bg.addColorStop(0.55, '#04060f');
-  bg.addColorStop(1, '#070312');
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, W, H);
-
-  stars.draw();
+  // 背景在所有战斗对象之下，且不随命中震动。缺少独立模块时保留旧星空兜底。
+  if (Game.background && Game.background.draw) {
+    Game.background.draw(ctx);
+  } else {
+    const bg = ctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, '#050a1c');
+    bg.addColorStop(0.55, '#04060f');
+    bg.addColorStop(1, '#070312');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+    stars.draw();
+  }
 
   // 战斗对象放在一层"可震动"的画布里
   const sh = shake.offset();

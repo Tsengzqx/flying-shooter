@@ -332,6 +332,8 @@ if (BUNDLE) {
 } else {
   const FILES = [
     'js/main.js',
+    'js/background.js',
+    'js/art.js',
     'js/input.js',
     'js/bullets.js',
     'js/player.js',
@@ -4655,6 +4657,474 @@ ok('流程中确实触发了强化选择', picked > 0,
 ok('压测过程中积累了多种增益', seenIds.size >= 3, '出现过 ' + seenIds.size + ' 种');
 ok('等级确实在成长', maxLevel >= 3, '最高等级 ' + maxLevel);
 ok('波次确实在推进', maxWave >= 2, '最高波次 ' + maxWave);
+
+console.log('\n[41] 回归：高速路径命中 / 升级结算 / 退出记录');
+(function () {
+  function arena() {
+    startSafe();
+    G.player.autoFire = false;
+    G.enemies.list.length = 0;
+    G.enemies.wave.queue.length = 0;
+    G.bullets.reset();
+  }
+  function target(x, y) {
+    G.enemies.spawn('scout', x, { noElite: true });
+    const e = G.enemies.list[G.enemies.list.length - 1];
+    e.x = e.baseX = x; e.y = y; e.hp = e.maxHp = 100; e.fireCd = 999;
+    return e;
+  }
+  function tickBullet() {
+    G.bullets.update(0.016);
+    G.combat.update(0.016);
+  }
+  function choose(id) {
+    G.upgrades.request(G.progress.level);
+    G.upgrades.state.offers = [G.upgrades.POOL.find((b) => b.id === id)];
+    G.upgrades.choose(id);
+  }
+
+  arena();
+  const near = target(240, 280), far = target(240, 260);
+  G.bullets.spawnPlayer(240, 305, 0, -3040, { damage: 1, pierce: 999 });
+  tickBullet();
+  ok('高速穿透弹在同一帧打中沿途所有敌机', near.hp === 99 && far.hp === 99);
+  tickBullet();
+  ok('穿透弹不会在下一帧重复伤害同一目标', near.hp === 99 && far.hp === 99);
+
+  arena();
+  const first = target(240, 280), second = target(240, 260);
+  G.bullets.spawnPlayer(240, 305, 0, -3040, { damage: 1, pierce: 0 });
+  tickBullet();
+  ok('普通弹按接触顺序命中近处敌机而非数组末尾', first.hp === 99 && second.hp === 100);
+  ok('普通弹命中后被消耗', G.bullets.friendly.length === 0);
+
+  arena();
+  const limited = [target(240, 280), target(240, 240), target(240, 200)];
+  G.bullets.spawnPlayer(240, 320, 0, -8341.76, { damage: 1, pierce: 1 });
+  tickBullet();
+  ok('有限穿透仅伤害路径上前两个目标',
+    limited[0].hp === 99 && limited[1].hp === 99 && limited[2].hp === 100);
+  ok('穿透次数用尽后及时消耗子弹', G.bullets.friendly.length === 0);
+
+  arena();
+  G.upgrades.owned.gen_plasma = 1; G.upgrades.recalc();
+  const main = target(240, 280), neighbor = target(275, 280);
+  G.bullets.spawnPlayer(240, 305, 0, -8341.76, { damage: 1, pierce: 999 });
+  tickBullet();
+  ok('高速溅射弹仍直接伤害主目标', main.hp === 99);
+  ok('溅射以命中目标为中心而非帧末位置', Math.abs(neighbor.hp - 99.55) < 1e-8);
+
+  arena();
+  const edge = target(240, 10);
+  G.bullets.spawnPlayer(240, 50, 0, -8341.76, { damage: 1, pierce: 999 });
+  tickBullet();
+  ok('越界前经过的屏内敌机仍被命中', edge.hp === 99);
+  ok('完成越界路径碰撞后当帧回收子弹', G.bullets.friendly.length === 0);
+
+  arena();
+  G.player.y = G.H - 20; G.player.invuln = 0;
+  const lives = G.lives;
+  G.bullets.spawnEnemy(G.player.x, G.player.y - 50, 0, 10000);
+  tickBullet();
+  ok('敌弹越界前扫过玩家也会造成伤害', G.lives === lives - 1);
+  ok('越界敌弹不会残留', G.bullets.hostile.length === 0);
+
+  arena();
+  G.boss.start(10);
+  const boss = G.boss.state.boss;
+  boss.x = 240; boss.y = 240;
+  const behindBoss = target(240, 140);
+  const bossHp = boss.hp;
+  G.bullets.spawnPlayer(240, 340, 0, -15000, { damage: 1, pierce: 0 });
+  tickBullet();
+  ok('Boss 和杂兵统一按路径顺序结算', boss.hp < bossHp && behindBoss.hp === 100);
+
+  for (const xpLayers of [0, 5]) {
+    startSafe();
+    G.upgrades.owned.lv_xp = xpLayers;
+    if (xpLayers) G.upgrades.owned.gold_level_surge = 1;
+    G.progress.state.level = 20;
+    G.progress.state.xp = 7;
+    G.upgrades.recalc();
+    const total = G.progress.state.total;
+    choose('gold_level_ascend');
+    ok('飞升精确增加三级（经验增幅层数=' + xpLayers + '）', G.progress.level === 23);
+    ok('飞升保留已有经验且不伪造累计经验（层数=' + xpLayers + '）',
+      G.progress.state.xp === 7 && G.progress.state.total === total);
+    ok('飞升产生三次待选强化（层数=' + xpLayers + '）', G.progress.state.pending === 3);
+  }
+
+  startSafe();
+  G.upgrades.owned.lv_heal = 1; G.upgrades.recalc(); G.lives = 1;
+  G.progress.addXp(9 + 14 + 19);
+  ok('连升至四级仍结算跨过三级的回血', G.progress.level === 4 && G.lives === 2);
+  startSafe();
+  G.upgrades.owned.lv_heal = 1; G.upgrades.recalc(); G.lives = 1;
+  G.progress.addXp(9 + 14);
+  ok('连升至三级不会把回血重复结算两次', G.progress.level === 3 && G.lives === 2);
+
+  startSafe();
+  G.progress.addXp(9);
+  choose('lv_overflow');
+  ok('经验压缩立即更新本级门槛', G.progress.state.need === 12);
+  G.progress.addXp(12);
+  ok('经验压缩选取后的本级即可按新门槛升级', G.progress.level === 3);
+
+  startSafe();
+  G.progress.addXp(9 + 13);
+  choose('lv_overflow');
+  G.progress.update(0.016);
+  ok('已有经验达到压缩后门槛时无需再击杀即可升级', G.progress.level === 3);
+  ok('压缩门槛结算不凭空增加经验', G.progress.state.xp === 1 && G.progress.state.total === 22);
+
+  startSafe();
+  const record = Math.max(G.highScore, G.save.bestScore) + 12345;
+  G.score = record; G.toMenu();
+  ok('中途退出同步内存及存档最高分', G.highScore === record && G.save.bestScore === record);
+  ok('中途退出立即刷新菜单最高分', elements['menu-best'].textContent === record.toLocaleString());
+  ok('中途退出同步旧版最高分存储键', localStorage.getItem('starstrike.high') === String(record));
+  startSafe(); G.score = 1; G.toMenu();
+  ok('低分退出不会覆盖历史最高分', G.highScore === record && G.save.bestScore === record);
+  startSafe(); G.score = record + 1; G.gameOver();
+  ok('正常结算仍显示新纪录提示', !elements['over-record'].classList.contains('hidden'));
+})();
+
+console.log('\n[42] 冲角机前期难度');
+(function () {
+  startSafe();
+  G.player.autoFire = false;
+  G.enemies.list.length = 0;
+  G.enemies.wave.queue.length = 0;
+  const divers = [];
+  for (const level of [5, 10, 11, 15, 20, 30]) {
+    G.enemies.wave.level = level;
+    G.enemies.spawn('diver', 240, { noElite: true });
+    divers.push(G.enemies.list[G.enemies.list.length - 1]);
+  }
+  ok('第五关黄色冲角机俯冲速度降至282', Math.abs(divers[0].diveSpeed - 282) < 1e-8);
+  ok('第十关冲角机仍保留40%降速', Math.abs(divers[1].diveSpeed - 306) < 1e-8);
+  ok('前十关冲角机蓄力延长至1.25秒', divers[0].hoverDuration === 1.25 && divers[1].hoverDuration === 1.25);
+  ok('冲角机速度平滑递增且蓄力逐步缩短', divers.every((e, i) => i === 0 ||
+    (e.diveSpeed > divers[i - 1].diveSpeed && e.hoverDuration <= divers[i - 1].hoverDuration)));
+  ok('第二十关及之后恢复原俯冲参数', divers[4].diveSpeed === 590 && divers[5].diveSpeed === 670 &&
+    divers[4].hoverDuration === 0.75 && divers[5].hoverDuration === 0.75);
+
+  const e = divers[0];
+  G.enemies.list.length = 0; G.enemies.list.push(e);
+  G.enemies.wave.level = 5;
+  e.state = 'hover'; e.stateT = 0; e.y = 180; e.fireCd = 999;
+  for (let i = 0; i < 75; i++) G.enemies.update(0.016);
+  ok('实际悬停1.2秒仍未开始俯冲', e.state === 'hover');
+  for (let i = 0; i < 4; i++) G.enemies.update(0.016);
+  ok('蓄力结束以调低后的速度俯冲', e.state === 'dive' && Math.abs(Math.hypot(e.vx, e.vy) - 282) < 1e-8);
+  const x = e.x, y = e.y;
+  G.enemies.update(0.016);
+  ok('实际俯冲位移使用新速度', Math.abs(Math.hypot(e.x - x, e.y - y) - 282 * 0.016) < 1e-8);
+})();
+
+console.log('\n[43] 后期低光弹幕（仅改变绘制）');
+(function () {
+  const ctx = G.ctx;
+  const saved = {};
+  const names = ['moveTo', 'lineTo', 'stroke', 'fill', 'fillText'];
+  for (const name of names) saved[name] = ctx[name];
+  let segments = [], paints = [], texts = [], point = null;
+  ctx.moveTo = (x, y) => { point = { x, y }; };
+  ctx.lineTo = (x, y) => {
+    if (point) segments.push(Math.hypot(x - point.x, y - point.y));
+    point = { x, y };
+  };
+  ctx.stroke = () => paints.push({ blend: ctx.globalCompositeOperation, alpha: ctx.globalAlpha,
+    width: ctx.lineWidth, color: ctx.strokeStyle, stroke: true });
+  ctx.fill = () => paints.push({ blend: ctx.globalCompositeOperation, alpha: ctx.globalAlpha, stroke: false });
+  ctx.fillText = (s) => texts.push(s);
+  function capture(draw) {
+    segments = []; paints = []; texts = []; point = null;
+    draw();
+  }
+  try {
+    let bounded = true, nonAdditive = true, visible = true, unchanged = true;
+    for (const speed of [760, 1800, 100000]) {
+      for (const style of ['normal', 'laser', 'rail', 'heavy']) {
+        startSafe();
+        G.bullets.spawnPlayer(240, 400, speed * 0.6, -speed * 0.8,
+          { style, damage: 17, pierce: 9, r: 3 });
+        const before = JSON.stringify(G.bullets.friendly);
+        const stats = JSON.stringify(G.stats);
+        capture(() => G.bullets.draw());
+        bounded = bounded && segments.length > 0 && segments.every((n) => n <= 40 + 1e-8);
+        nonAdditive = nonAdditive && paints.every((p) => p.blend === 'source-over' && p.alpha <= 0.78);
+        visible = visible && paints.filter((p) => p.stroke).every((p) => p.width >= 1.8 && p.alpha >= 0.48);
+        unchanged = unchanged && JSON.stringify(G.bullets.friendly) === before && JSON.stringify(G.stats) === stats;
+      }
+    }
+    ok('所有子弹造型在极端弹速下拖尾不超过40像素', bounded);
+    ok('我方弹道使用非加法混合并限制亮度', nonAdditive);
+    ok('低光仍保留可见线宽与透明度下限', visible);
+    ok('绘制不会改变弹速、位置、伤害、穿透或属性表', unchanged);
+    ok('极高弹速即使只有一颗子弹也触发低光模式', G.bullets.calm);
+    ok('低光拖尾不超过24像素且线宽不超过2.2',
+      segments.every((n) => n <= 24 + 1e-8) && paints.filter((p) => p.stroke).every((p) => p.width <= 2.2));
+
+    G.bullets.friendly.length = 0;
+    G.bullets.spawnPlayer(200, 400, 0, -760, { elems: ['plasma'] });
+    capture(() => G.bullets.draw());
+    ok('子弹数回落不会切回高光造成闪烁', G.bullets.calm && paints.every((p) => p.alpha === 0.48));
+    ok('低光模式保留元素颜色', paints.some((p) => p.color === '#d9b6ff'));
+    startSafe();
+    ok('新一局会恢复普通视觉模式', !G.bullets.calm);
+    G.stats.fireRateMul = 0.1;
+    G.bullets.spawnPlayer(200, 400, 0, -760);
+    capture(() => G.bullets.draw());
+    ok('高射速单独触发低光模式', G.bullets.calm);
+
+    startSafe();
+    for (let i = 0; i < 121; i++) G.bullets.spawnPlayer(200, 400, 0, -760);
+    capture(() => G.bullets.draw());
+    ok('密集弹幕单独触发低光模式', G.bullets.calm);
+    G.bullets.friendly.length = 0;
+    G.bullets.spawnEnemy(100, 100, 0, 150);
+    capture(() => G.bullets.draw());
+    ok('低光模式不会降低敌弹亮度或改变其原有混合',
+      paints.length === 3 && paints.every((p) => p.alpha === 1 && p.blend === 'lighter'));
+
+    G.particles.clear();
+    G.particles.spark(200, 400);
+    G.particles.ring(200, 400);
+    G.particles.bolt(200, 400, 230, 450);
+    G.particles.text(200, 400, '回响'); G.particles.text(200, 400, '回响');
+    G.particles.text(200, 400, '🔔 共鸣'); G.particles.text(200, 400, '🔔 共鸣');
+    G.particles.text(200, 400, '123');
+    const before = JSON.stringify(G.particles.list);
+    capture(() => G.particles.draw());
+    ok('低光火花、爆炸及电弧不会加法叠白且亮度受限',
+      paints.length > 0 && paints.every((p) => p.blend === 'source-over' && p.alpha <= 0.32));
+    ok('重复回响共鸣提示合并绘制但仍保留伤害数字',
+      texts.filter((s) => s === '回响').length === 1 && texts.filter((s) => s === '🔔 共鸣').length === 1 && texts.includes('123'));
+    ok('降低粒子亮度不改变粒子状态或生命周期', JSON.stringify(G.particles.list) === before);
+  } finally {
+    for (const name of names) ctx[name] = saved[name];
+  }
+})();
+
+console.log('\n[44] DOT后期成长与Boss侵蚀边界');
+(function () {
+  const U = G.upgrades;
+  function full(wave) {
+    startSafe();
+    for (const b of U.POOL) if (b.build === 'rad') U.owned[b.id] = b.max;
+    U.state.bossKills = Math.max(0, wave / 10 - 1);
+    U.recalc();
+    G.boss.start(wave);
+    const t = G.boss.state.boss;
+    t.hp = t.maxHp = 1e10;
+    t.dotStacks = G.stats.dotMax; t.dotT = 1000; t.dotTick = 0;
+    return t;
+  }
+  ok('高层反应不改变前30层伤害', U.dotStackMultiplier(1) === 1 && U.dotStackMultiplier(30) === 1);
+  ok('高层反应随层数增长，满配超过6倍', U.dotStackMultiplier(100) > U.dotStackMultiplier(40) && U.dotStackMultiplier(202) > 6);
+  startSafe(); U.owned.dot_core = 1; U.recalc();
+  const early = { x: 0, y: 0, hp: 100, dotStacks: 20, dotT: 100, dotTick: 0 };
+  ok('前期辐射源低层跳伤保持原值', Math.abs(U.tickDot(early, 0.016).dmg - 3.2) < 1e-8);
+
+  full(100); U.owned.dot_core = 2; U.recalc();
+  ok('大量其它辐射增益不能绕过辐射源3级门槛', G.stats.dotBossPct === 0);
+  startSafe();
+  Object.assign(U.owned, { dot_core: 3, dot_power: 4, dot_cap: 2, dot_stack: 2 }); U.recalc();
+  ok('辐射累计11层时不解锁侵蚀', G.stats.dotBossPct === 0);
+  U.owned.dot_duration = 1; U.recalc();
+  ok('辐射源3级且辐射12层解锁侵蚀', G.stats.dotBossPct > 0);
+  let t = full(100);
+  ok('满配侵蚀上限约2.398%每秒且不超过2.5%', Math.abs(G.stats.dotBossPct - 0.023976) < 1e-10 && G.stats.dotBossPct <= 0.025);
+  const pct = G.stats.dotBossPct;
+  for (const b of U.POOL) if (b.build !== 'rad') U.owned[b.id] = b.max;
+  U.state.hits = 1000000; U.recalc();
+  ok('常规子弹增益及命中积累不提高侵蚀', G.stats.dotBossPct === pct);
+  U.state.bossKills = 20; U.recalc();
+  ok('击破奖励不再次放大百分比侵蚀', G.stats.dotBossPct === pct);
+
+  t = full(10); t.dotFocus = 8;
+  ok('第10关Boss不吃百分比侵蚀', U.dotBossRate(t) === 0);
+  t.level = 20; const rate20 = U.dotBossRate(t);
+  t.level = 30; const rate30 = U.dotBossRate(t);
+  t.level = 40; const rate40 = U.dotBossRate(t);
+  ok('20至40关逐步发挥侵蚀强度', Math.abs(rate20 * 3 - rate40) < 1e-10 && Math.abs(rate30 * 1.5 - rate40) < 1e-10);
+  t.level = 100;
+  ok('40关以后侵蚀比例不无限增长', U.dotBossRate(t) === rate40);
+  t.dotStacks = 39;
+  ok('不足40层时没有侵蚀', U.dotBossRate(t) === 0);
+  t.dotStacks = 40; const rate40Stacks = U.dotBossRate(t);
+  t.dotStacks = 100;
+  ok('侵蚀随高层饱和度提升，100层达到上限', Math.abs(rate40Stacks / U.dotBossRate(t) - 0.16) < 1e-10);
+  const copy = Object.assign({}, t);
+  ok('普通敌机或复制对象不获得Boss百分比伤害', U.dotBossRate(copy) === 0);
+
+  t = full(100); G.stats.dotBurst = 0;
+  t.dotStacks = 39;
+  for (let i = 0; i < 100; i++) U.tickDot(t, 0.016);
+  ok('低层挂毒不能提前积累成熟度', t.dotFocus === 0 && t.dotErosionPending === 0);
+  t.dotStacks = 100;
+  for (let i = 0; i < 140; i++) U.tickDot(t, 0.05);
+  ok('7秒高层挂毒尚未完全成熟', t.dotFocus > 6.99 && t.dotFocus < 8 && U.dotBossRate(t) < G.stats.dotBossPct);
+  for (let i = 0; i < 21; i++) U.tickDot(t, 0.05);
+  ok('8秒后成熟度封顶', t.dotFocus === 8 && U.dotBossRate(t) === G.stats.dotBossPct);
+
+  function budget(dt, interval, crit) {
+    const b = full(100);
+    b.dotStacks = 100; b.dotFocus = 8;
+    G.stats.dotPerStack = 0; G.stats.dotBurst = 0;
+    G.stats.dotChain = 0; G.stats.dotInterval = interval;
+    G.stats.dotCritChance = crit ? 1 : 0; G.stats.dotDouble = crit ? 1 : 0;
+    let elapsed = 0, released = 0;
+    while (elapsed < 4 - 1e-9) {
+      const step = Math.min(dt, 4 - elapsed);
+      released += U.tickDot(b, step).erosion; elapsed += step;
+    }
+    return (released + b.dotErosionPending) / b.maxHp;
+  }
+  const expectBudget = 0.023976 * 4;
+  const budgets = [budget(0.016, 0.05, false), budget(0.033, 0.5, false), budget(0.1, 0.5, true)];
+  ok('侵蚀预算与帧率、跳频、暴击和双跳无关', budgets.every((v) => Math.abs(v - expectBudget) < 1e-8));
+  ok('四秒侵蚀预算不超过每秒2.5%硬上限', budgets.every((v) => v <= 0.025 * 4));
+
+  t = full(100); t.dotFocus = 8;
+  const burst = U.tickDot(t, 0.05);
+  ok('满层引爆仍保留半层，且成熟侵蚀不中断', !!burst.burst && t.dotStacks === 101 && t.dotFocus === 8 && U.dotBossRate(t) === G.stats.dotBossPct);
+  const expectedBurst = 202 * 0.6 * G.stats.dotBurst * G.stats.dotPerStack * 0.5 * 6 * U.dotStackMultiplier(202);
+  ok('临界引爆只放大平伤、不复制百分比预算', Math.abs(burst.burst.dmg / expectedBurst - 1) < 1e-10);
+  ok('百分比伤害计入DOT总伤且与平伤分开报告', burst.erosion > 0 && burst.dmg === burst.flatDmg + burst.erosion);
+  ok('释放一跳后侵蚀预算归零', t.dotErosionPending === 0);
+
+  t.dotT = 0.001; t.dotErosionPending = 123;
+  U.tickDot(t, 0.016);
+  ok('DOT过期清空层数、成熟度和未释放预算', t.dotStacks === 0 && t.dotFocus === 0 && t.dotErosionPending === 0);
+  t.dotT = 0; t.dotStacks = 202; t.dotFocus = 8; t.dotErosionPending = 123;
+  U.applyDot(t, G.stats.dotPerHit);
+  ok('过期再点燃不能继承旧层数或旧预算', t.dotStacks === G.stats.dotPerHit && t.dotFocus === 0 && t.dotErosionPending === 0);
+  full(100); G.boss.start(100);
+  ok('换Boss时重新建立成熟度和预算', G.boss.state.boss.dotFocus === 0 && G.boss.state.boss.dotErosionPending === 0);
+  t = full(100); t.dotFocus = 8;
+  ok('面板显示当前Boss侵蚀比例', G.panel.rows().some((r) => r.label === 'Boss 侵蚀' && r.value === '2.40%/s'));
+  const hits = U.state.hits;
+  U.tickDot(t, 0.05);
+  ok('高层跳伤与侵蚀都不产生命中积累', U.state.hits === hits);
+  startSafe();
+  ok('新一局清除侵蚀专精属性', G.stats.dotBossPct === 0);
+})();
+
+console.log('\n[45] 写实宇宙背景与Boss星球生命周期');
+(function () {
+  const B = G.background;
+  ok('宇宙背景模块已加载并接入主循环', !!B && typeof B.update === 'function' && typeof B.draw === 'function');
+  if (!B) return;
+  const ids = G.boss.ROSTER.map((b) => b.id);
+  ok('六种Boss都有独立星球配置且无漏项', JSON.stringify(Object.keys(B.defs).sort()) === JSON.stringify(ids.slice().sort()));
+  ok('六颗星球半径各不相同', new Set(ids.map((id) => B.defs[id].radius)).size === 6);
+  ok('六颗星球具有不同表面材质', new Set(ids.map((id) => B.defs[id].material)).size === 6);
+  ok('背景星球亮度限制在低光范围', ids.every((id) => B.defs[id].maxAlpha > 0 && B.defs[id].maxAlpha <= 0.7));
+  const layout = B.layout('hive', 480, 800);
+  ok('星球布局使用屏幕短边计算比例', Math.abs(layout.r - 480 * B.defs.hive.radius) < 1e-8);
+  ok('无效及原型链机型不会产生NaN星球', B.layout('missing', 480, 800) === null && B.layout('__proto__', 480, 800) === null);
+  const zero = B.layout('hive', NaN, -1);
+  ok('无效窗口尺寸安全退化为零', zero.r === 0 && zero.x === 0 && zero.y === 0);
+
+  startSafe(); B.update(1);
+  ok('普通关卡不会凭空出现Boss星球', B.state.currentId === null && B.state.alpha === 0);
+  G.boss.start(10); B.update(0.016);
+  ok('真实Boss登场自动匹配其星球', B.state.currentId === 'hive');
+  ok('登场首帧低亮而不是瞬间全亮', B.state.alpha > 0 && B.state.alpha < B.defs.hive.maxAlpha * 0.01);
+  const first = B.state.alpha;
+  B.update(1);
+  ok('星球随时间逐渐浮现', B.state.alpha > first && B.state.alpha < B.defs.hive.maxAlpha);
+  B.update(2);
+  ok('淡入完成后不超过配置亮度', Math.abs(B.state.alpha - B.defs.hive.maxAlpha) < 1e-10);
+  const stateBeforePause = JSON.stringify(B.state);
+  G.state = 'paused'; B.update(2);
+  ok('暂停时星球动画和过渡完全冻结', JSON.stringify(B.state) === stateBeforePause);
+  G.state = 'upgrade'; B.update(2);
+  ok('强化选择时星球转场完全冻结', JSON.stringify(B.state) === stateBeforePause);
+  G.state = 'playing';
+  const beforeInvalidDt = JSON.stringify(B.state);
+  B.update(NaN); B.update(-1); B.update(Infinity);
+  ok('异常时间步不会破坏转场状态', JSON.stringify(B.state) === beforeInvalidDt);
+  G.boss.start(20); B.update(0.016);
+  ok('替换Boss时匹配新的紫色星球', B.state.currentId === 'reaver');
+  ok('旧星球保留淡出而非被突然删除', B.state.previousId === 'hive' && B.state.previousAlpha > 0);
+  ok('新星球从低亮度进入交叉淡化', B.state.alpha < B.defs.reaver.maxAlpha * 0.01);
+  B.update(3);
+  ok('交叉淡化结束后只保留当前星球', B.state.previousId === null && B.state.previousAlpha === 0 && B.state.alpha === B.defs.reaver.maxAlpha);
+  G.boss.state.boss.dead = true; B.update(0.1);
+  ok('Boss死亡会触发星球渐隐', B.state.currentId === null && B.state.previousId === 'reaver' && B.state.previousAlpha > 0);
+  B.update(3);
+  ok('Boss死亡后的残影最终清空', B.state.previousId === null && B.state.previousAlpha === 0);
+  G.boss.start(30); B.update(3);
+  G.state = 'gameover'; B.update(3);
+  ok('游戏结束也能清除未击破Boss的星球', B.state.currentId === null && B.state.previousAlpha === 0);
+  G.state = 'playing'; G.boss.start(40); B.update(3);
+  B.resize(1280,720);
+  ok('横竖屏切换保留Boss与淡入进度', B.state.currentId === 'arbiter' && B.state.alpha === B.defs.arbiter.maxAlpha && B.state.width === 1280 && B.state.height === 720);
+  G.toMenu();
+  ok('返回菜单立即清理星球状态', B.state.currentId === null && B.state.previousId === null && B.state.alpha === 0);
+
+  startSafe(); G.boss.start(60); B.update(3);
+  const hp = G.boss.state.boss.hp, score = G.score;
+  const prevRandom = sandbox.Math.random;
+  let randomSafe = true;
+  try {
+    sandbox.Math.random = function () { throw new Error('视觉不应消费战斗随机源'); };
+    B.resize(480,800); B.draw(); B.update(0.016); B.draw();
+  } catch (_) { randomSafe = false; }
+  finally { sandbox.Math.random = prevRandom; }
+  ok('背景绘制和更新不消费战斗Math.random', randomSafe);
+  ok('星球不会伤害Boss或改变得分', G.boss.state.boss.hp === hp && G.score === score);
+  for (const id of ids) {
+    G.boss.state.boss = {def:{id},dead:false}; B.update(3); B.draw();
+  }
+  ok('全部星球缓存数量固定不超过六张', B.debug.cachedPlanets === 6 && B.debug.planetBuilds <= 6);
+  ok('星空纹理只生成一张', B.debug.skyBuilds === 1);
+  ok('无像素Canvas桩走安全降级路径', B.debug.fallbackTextures === 7 && B.debug.pixelTextures === 0);
+  const builds = B.debug.skyBuilds + B.debug.planetBuilds;
+  for (let i = 0; i < 12; i++) { B.resize(320+i*50,700); B.update(0.016); B.draw(); }
+  ok('连续绘制和窗口变化不会重建昂贵纹理', B.debug.skyBuilds + B.debug.planetBuilds === builds);
+  B.reset(); B.draw();
+  ok('重开清空转场但复用已有纹理缓存', B.state.alpha === 0 && B.state.currentId === null && B.debug.skyBuilds + B.debug.planetBuilds === builds);
+  G.boss.state.boss = {def:{id:'not-a-boss'},dead:false}; B.update(1);
+  ok('未知Boss安全退化为无星球背景', B.state.currentId === null);
+  startSafe();
+  ok('新一局不继承上一局的Boss星球', B.state.currentId === null && B.state.previousId === null && B.state.time === 0);
+  B.resize(G.W,G.H);
+  const order = [], bgDraw = B.draw, bulletsDraw = G.bullets.draw;
+  try {
+    B.draw = function () { order.push('background'); return bgDraw.apply(B, arguments); };
+    G.bullets.draw = function () { order.push('bullets'); return bulletsDraw.apply(G.bullets, arguments); };
+    step(16);
+  } finally { B.draw = bgDraw; G.bullets.draw = bulletsDraw; }
+  ok('真实主循环更新背景且始终在弹幕下方绘制', B.state.time > 0 && order.indexOf('background') >= 0 && order.indexOf('background') < order.indexOf('bullets'));
+  startSafe();
+})();
+
+console.log('\n[46] 舰船图片模块与打包资源表');
+(function () {
+  const A = G.art;
+  ok('舰船图片模块已按顺序加载', !!A && typeof A.draw === 'function' && typeof A.status === 'function');
+  if (!A) return;
+  const st = A.status();
+  ok('运行资源表包含21张机体/精英/旋转图层', st.total === 21);
+  ok('玩家和全部敌机/Boss都有基础资源', ['player', ...Object.keys(G.enemies.TYPES), ...G.boss.ROSTER.map(b => b.id)].every(id => !!A.entries[id]));
+  ok('仲裁者与噬星者的独立旋转图层齐全', ['arbiter-outer-ring','arbiter-inner-ring','arbiter-hull','devourer-armor-ring','devourer-intake-iris','devourer-hull'].every(id => !!A.entries[id]));
+  ok('无Image环境全部安全退化而不等待或崩溃', st.failed === 21 && st.pending === 0);
+  ok('缺失图片绘制返回false供Canvas回退', A.draw(G.ctx, 'player', 42) === false && A.draw(G.ctx, '__unknown__', 42) === false);
+  ok('真实游戏循环已尝试绘制新机体且可继续回退', st.fallbacks > 0 && G.player.alive);
+  ok('源码读取本地PNG，打包版全部内联', st.entries.every(e => BUNDLE ? e.src.startsWith('data:image/png;base64,') : /^assets\/art\/runtime\/[\w-]+\.png$/.test(e.src)));
+  G.boss.start(10); G.hud.update();
+  ok('Boss战使用紧凑标题，不与普通关卡标题重叠', elements['hud-level'].classList.contains('hidden'));
+  ctx2d.__begin(); G.boss.drawUI(); const uiOps = ctx2d.__end();
+  const bars = uiOps.filter(op => op.startsWith('fillRect:')).map(op => op.split(':').slice(1).map(Number));
+  ok('Boss血条收进顶部区域，不横穿机体中心', bars.length >= 2 && bars.every(b => b[1] >= 20 && b[1] + b[3] <= 36));
+  G.toMenu(); G.hud.update();
+  ok('结束Boss战后恢复普通关卡标题', !elements['hud-level'].classList.contains('hidden'));
+  startSafe();
+})();
 
 /* ---------------- 结果 ---------------- */
 console.log('\n==============================');

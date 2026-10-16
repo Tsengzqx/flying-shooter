@@ -1,0 +1,124 @@
+{
+  "renderer": "@napi-rs/canvas",
+  "source": "built single-file",
+  "scope": "actual background draw code, not a browser playtest",
+  "timings": {
+    "skyColdMs": 69.6,
+    "hiveColdMs": 65.3,
+    "hiveWarmFrameMs": 0.212,
+    "reaverColdMs": 65.76,
+    "reaverWarmFrameMs": 0.218,
+    "dreadColdMs": 78.75,
+    "dreadWarmFrameMs": 0.201,
+    "arbiterColdMs": 66.56,
+    "arbiterWarmFrameMs": 0.274,
+    "endwalkerColdMs": 72.36,
+    "endwalkerWarmFrameMs": 0.205,
+    "devourerColdMs": 60.05,
+    "devourerWarmFrameMs": 0.232
+  },
+  "checks": [
+    "zero gameplay RNG calls",
+    "actual sky + all six planet texture paths",
+    "background luminance limits",
+    "transparent/native texture compositing",
+    "exactly seven real pixel textures; steady-state cache reuse",
+    "native Canvas alpha + DPR transform restored",
+    "portrait/landscape resize"
+  ],
+  "backgrounds": [
+    {
+      "id": "deep-space",
+      "mean": 10.75,
+      "brightFraction": 0,
+      "lowerBrightFraction": 0
+    },
+    {
+      "id": "hive",
+      "name": "钢铁蜂巢",
+      "mean": 13.83,
+      "brightFraction": 0,
+      "lowerBrightFraction": 0,
+      "layout": {
+        "x": 438,
+        "y": 216,
+        "r": 141,
+        "radius": 141,
+        "textureScale": 1.1130434782608696
+      }
+    },
+    {
+      "id": "reaver",
+      "name": "虚空掠夺者",
+      "mean": 13.36,
+      "brightFraction": 0,
+      "lowerBrightFraction": 0,
+      "layout": {
+        "x": 144,
+        "y": 252.00000000000003,
+        "r": 183,
+        "radius": 183,
+        "textureScale": 1.1130434782608696
+      }
+    },
+    {
+      "id": "dread",
+      "name": "熔核巨舰",
+      "mean": 11.99,
+      "brightFraction": 0,
+      "lowerBrightFraction": 0,
+      "layout": {
+        "x": 450,
+        "y": 279,
+        "r": 159,
+        "radius": 159,
+        "textureScale": 1.1130434782608696
+      }
+    },
+    {
+      "id": "arbiter",
+      "name": "深空仲裁者",
+      "mean": 14.24,
+      "brightFraction": 0,
+      "lowerBrightFraction": 0,
+      "layout": {
+        "x": 162,
+        "y": 180,
+        "r": 206.99999999999997,
+        "radius": 206.99999999999997,
+        "textureScale": 1.1130434782608696
+      }
+    },
+    {
+      "id": "endwalker",
+      "name": "终焉之影",
+      "mean": 11.57,
+      "brightFraction": 0,
+      "lowerBrightFraction": 0,
+      "layout": {
+        "x": 432,
+        "y": 171,
+        "r": 122.99999999999999,
+        "radius": 122.99999999999999,
+        "textureScale": 1.1130434782608696
+      }
+    },
+    {
+      "id": "devourer",
+      "name": "噬星者",
+      "mean": 19.48,
+      "brightFraction": 0,
+      "lowerBrightFraction": 0,
+      "layout": {
+        "x": 402,
+        "y": 198,
+        "r": 234,
+        "radius": 234,
+        "textureScale": 1.7297297297297298
+      }
+    }
+  ],
+  "steadyStateDebugBefore": "{\"skyBuilds\":1,\"planetBuilds\":6,\"cachedPlanets\":6,\"pixelTextures\":7,\"fallbackTextures\":0,\"maxPlanetSize\":512,\"skyWidth\":320,\"skyHeight\":384}",
+  "steadyStateDebugAfter": "{\"skyBuilds\":1,\"planetBuilds\":6,\"cachedPlanets\":6,\"pixelTextures\":7,\"fallbackTextures\":0,\"maxPlanetSize\":512,\"skyWidth\":320,\"skyHeight\":384}",
+  "status": "passed"
+}

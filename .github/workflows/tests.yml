@@ -26,6 +26,12 @@ jobs:
         # 本地复现：SMOKE_SEED=123 node tools/smoke-test.js
         run: SMOKE_SEED=123 node tools/smoke-test.js
 
+      - name: 图片资源加载失败回退与分层绘制测试
+        run: node tools/art-test.js
+
+      - name: DOT前后期平衡基准（合法构筑与侵蚀预算）
+        run: node tools/dot-probe.js
+
       - name: 不变量模糊测试（随机构筑 + 随机输入）
         run: node tools/fuzz.js 20261006 15 1800
 
@@ -47,6 +53,10 @@ jobs:
           unzip -q dist/flying-shooter-source.zip -d /tmp/src
           test -f /tmp/src/index.html
           test -f /tmp/src/js/main.js
+          test -f /tmp/src/js/background.js
+          test -f /tmp/src/js/art.js
+          test -f /tmp/src/assets/art/runtime/player.png
+          test -f /tmp/src/assets/art/runtime/arbiter-inner-ring.png
           test -f /tmp/src/js/codex.js
           test -f /tmp/src/CHANGELOG.md
           echo "zip 解压成功，文件数：$(find /tmp/src -type f | wc -l)"

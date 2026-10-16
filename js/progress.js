@@ -14,6 +14,8 @@
    ------------------------------------------------------------
    对外接口：
      Game.progress.addXp(n)     击杀时调用（自动吃 xpMul 加成）
+     Game.progress.addLevels(n) 直接升 n 级（不改经验、不吃倍率）
+     Game.progress.refreshNeed() 属性改变后刷新经验需求（不结算）
      Game.progress.update(dt) / .draw() / .reset()
      Game.progress.level        当前等级
      Game.progress.potentialMul()  潜能爆发的射速倍率
@@ -43,6 +45,8 @@
 
   /** 升级瞬间的结算（可以被连升多次触发） */
   function onLevelUp() {
+    // 先按当前这一级更新生命上限等属性，再结算升级效果。
+    if (G.upgrades && G.upgrades.recalc) G.upgrades.recalc();
     const S = G.stats || {};
     const P = G.player;
 
@@ -60,9 +64,6 @@
     // 潜能爆发
     if (S.potential > 0) state.potentialT = 6;
 
-    // 等级会改变 成长之力 / 熟练加速 / 强健体魄 / 战斗直觉
-    if (G.upgrades && G.upgrades.recalc) G.upgrades.recalc();
-
     if (G.particles && P) {
       G.particles.ring(P.x, P.y, '#8fffbf', 16, 470);
       G.particles.text(P.x, P.y - 48, 'LV ' + state.level, '#8fffbf', 20);
@@ -70,9 +71,41 @@
     if (G.hud) G.hud.invalidate();
   }
 
+  function refreshNeed() {
+    state.need = xpFor(state.level);
+    return state.need;
+  }
+
+  function advanceLevel() {
+    state.level++;
+    state.pending++;
+    refreshNeed();
+    onLevelUp(); // 必须在下一次 level++ 之前结算，尤其是按等级触发的回复
+  }
+
+  function notifyLevels(count) {
+    if (count <= 0) return;
+    state.flashT = 1;
+    if (G.audio && G.audio.levelUp) G.audio.levelUp();
+    if (G.hud) G.hud.invalidate();
+  }
+
+  /** 只消费已有经验；压缩门槛或达到单次上限后的余额可在下一帧继续结算。 */
+  function settleXp() {
+    refreshNeed();
+    let leveled = 0;
+    while (state.xp >= state.need && leveled < 30) {
+      state.xp -= state.need;
+      advanceLevel();
+      leveled++;
+    }
+    notifyLevels(leveled);
+  }
+
   G.progress = {
     state,
     xpFor,
+    refreshNeed,
 
     get level() { return state.level; },
 
@@ -100,24 +133,16 @@
       state.xp += gain;
       state.total += gain;
 
-      let leveled = 0;
-      while (state.xp >= state.need && leveled < 30) {
-        state.xp -= state.need;
-        state.level++;
-        state.need = xpFor(state.level);
-        leveled++;
-      }
-
-      if (leveled > 0) {
-        state.pending += leveled;
-        state.flashT = 1;
-        for (let i = 0; i < leveled; i++) onLevelUp();
-
-        if (G.audio && G.audio.levelUp) G.audio.levelUp();
-        if (G.hud) G.hud.invalidate();
-      }
-
+      settleXp();
       return gain;
+    },
+
+    /** 直接授予等级，保留已有 xp / total，不经过经验倍率或消费经验。 */
+    addLevels(count) {
+      if (G.state !== 'playing' || !Number.isSafeInteger(count) || count <= 0) return 0;
+      for (let i = 0; i < count; i++) advanceLevel();
+      notifyLevels(count);
+      return count;
     },
 
     /** 三选一选完后，消耗掉一次升级机会 */
@@ -133,6 +158,7 @@
     },
 
     update(dt) {
+      if (G.state === 'playing') settleXp();
       if (state.flashT > 0) state.flashT = Math.max(0, state.flashT - dt * 1.6);
       if (state.potentialT > 0) state.potentialT = Math.max(0, state.potentialT - dt);
 

@@ -1,0 +1,37 @@
+{
+  "status": "passed",
+  "coverage": {
+    "player": 1,
+    "enemies": [
+      "diver",
+      "escort",
+      "gunship",
+      "scout",
+      "splitter",
+      "weaver",
+      "zigzag"
+    ],
+    "bosses": [
+      "arbiter",
+      "devourer",
+      "dread",
+      "endwalker",
+      "hive",
+      "reaver"
+    ],
+    "overlays": 1
+  },
+  "checks": [
+    "game ID coverage",
+    "SVG parsed by resvg",
+    "no scripts or external references",
+    "square target dimensions",
+    "transparent corners",
+    "nonempty alpha bounds inside canvas",
+    "PNG SHA-256 recorded"
+  ],
+  "counts": {
+    "sprites": 15,
+    "previews": 3
+  }
+}

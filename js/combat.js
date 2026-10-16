@@ -24,37 +24,31 @@
   const dmgAcc = new Map();   // key -> { x, y, sum, crit, t }
   const state = { dps: 0, accum: 0, dotAccum: 0, timer: 0, ringT: 0 };
 
-  /**
-   * 圆形 / 扫掠碰撞检测
-   *
-   * 子弹带 prevX/prevY 时，用「上一帧位置 → 当前帧位置」的线段与目标圆求最近点；
-   * 否则退回普通圆形重叠。轨道弹二级能到 3040px/s，16ms 一帧跨 48.6px，
-   * 只检查终点会从敌人一侧跳到另一侧、整颗穿过去。
-   */
-  function overlap(a, b) {
-    if (!a || !b) return false;
-
+  /** 返回扫掠路径首次接触目标的比例 [0, 1]，未命中为 null。
+   * 用入射点排序，而非数组顺序或最近点，保证有限穿透先打到近处目标。 */
+  function hitTime(a, b) {
+    if (!a || !b) return null;
+    const swept = Number.isFinite(a.prevX) && Number.isFinite(a.prevY);
+    const sx = swept ? a.prevX : a.x;
+    const sy = swept ? a.prevY : a.y;
+    const dx = sx - b.x;
+    const dy = sy - b.y;
     const rr = (a.r || 0) + (b.r || 0);
-    const dx = a.x - b.x;
-    const dy = a.y - b.y;
-    if (dx * dx + dy * dy <= rr * rr) return true;
-
-    if (!Number.isFinite(a.prevX) || !Number.isFinite(a.prevY)) return false;
-
-    const sx = a.prevX;
-    const sy = a.prevY;
+    const c = dx * dx + dy * dy - rr * rr;
+    if (c <= 0) return 0;
     const vx = a.x - sx;
     const vy = a.y - sy;
     const len2 = vx * vx + vy * vy;
-    if (len2 <= 1e-9) return false;
+    if (len2 <= 1e-9) return null;
+    const dot = dx * vx + dy * vy;
+    const disc = dot * dot - len2 * c;
+    if (disc < 0) return null;
+    const t = (-dot - Math.sqrt(disc)) / len2;
+    return t >= 0 && t <= 1 ? t : null;
+  }
 
-    const t = Math.max(0, Math.min(1,
-      ((b.x - sx) * vx + (b.y - sy) * vy) / len2));
-    const cx = sx + vx * t;
-    const cy = sy + vy * t;
-    const qx = cx - b.x;
-    const qy = cy - b.y;
-    return qx * qx + qy * qy <= rr * rr;
+  function overlap(a, b) {
+    return hitTime(a, b) !== null;
   }
 
   /** 记录一次命中：用于飘字与秒伤统计 */
@@ -210,19 +204,41 @@
       const S = G.stats || {};
 
       /* ---------- ① 我方子弹 × 敌机 ---------- */
-      if (B && enemies) {
+      if (B) {
         for (let i = B.friendly.length - 1; i >= 0; i--) {
           const b = B.friendly[i];
           if (!b) { B.friendly.splice(i, 1); continue; }
           let consumed = false;
 
-          for (let j = enemies.length - 1; j >= 0; j--) {
-            const e = enemies[j];
-            if (!e) continue;  // 连环击杀会递归缩短列表，旧下标可能已越界
-            if (!overlap(b, e)) continue;
-
-            // 穿透弹：同一颗子弹不重复命中同一个敌人
+          // 快照对象而非下标：溅射/连环爆炸可能在结算中移除其它目标。
+          const contacts = [];
+          for (const e of enemies || []) {
+            if (!e || e.alive === false || e.hp <= 0) continue;
             if (b.hits && b.hits.indexOf(e.uid) !== -1) continue;
+            const t = hitTime(b, e);
+            if (t !== null) contacts.push({ target: e, t, boss: false });
+          }
+          const bs = G.boss && G.boss.state && G.boss.state.boss;
+          if (bs && !bs.dead && G.boss.tryHit) {
+            const t = hitTime(b, bs);
+            if (t !== null) contacts.push({ target: bs, t, boss: true });
+          }
+          contacts.sort((a, b) => a.t - b.t);
+
+          for (const contact of contacts) {
+            const e = contact.target;
+            if (contact.boss) {
+              // 保留 Boss 吸收子弹的既有规则，但同样按路径先后结算。
+              if (G.boss.state.boss !== e || e.dead) continue;
+              if (G.boss.tryHit(b)) {
+                bulletEffects(e, S, e.x, e.y, true);
+                consumed = true;
+                break;
+              }
+              continue;
+            }
+            const j = enemies.indexOf(e);
+            if (j === -1 || e.alive === false || e.hp <= 0) continue;
 
             // 伤害 = 子弹基础伤害 × 增益倍率 + 命中积累 × 暴击
             let dmg = b.damage || 1;
@@ -254,7 +270,7 @@
             if (G.upgrades && G.upgrades.addHit) G.upgrades.addHit(1);
 
             // 子弹附加特效（溅射/霜冻/电弧/剧毒）
-            bulletEffects(e, S, b.x, b.y);
+            bulletEffects(e, S, e.x, e.y);
 
             if (b.pierce > 0) {
               b.pierce--;
@@ -262,15 +278,8 @@
               b.hits.push(e.uid);
             } else {
               consumed = true;
+              break;
             }
-            break;
-          }
-
-          // 没打到小怪，试试 Boss；直击成功后同样派发等离子 / 电弧附加效果
-          if (!consumed && G.boss && G.boss.tryHit && G.boss.tryHit(b)) {
-            const bossTarget = G.boss.state && G.boss.state.boss;
-            bulletEffects(bossTarget || {}, S, b.x, b.y, true);
-            consumed = true;
           }
 
           if (consumed) B.friendly.splice(i, 1);
@@ -319,6 +328,9 @@
           G.boss.collidePlayer(P);
         }
       }
+
+      // 越界前的整段路径已结算，现在才允许回收。
+      if (B && B.cleanup) B.cleanup();
 
       /* ---------- 伤害可视化 ---------- */
       flushDamage(dt);

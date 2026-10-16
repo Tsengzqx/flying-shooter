@@ -182,21 +182,23 @@
       const ctx = G.ctx;
       if (!list.length) return;
 
-      // 发光类粒子
+      // 粒子不再加法叠白；高强度构筑降低火花/爆炸亮度，但不减少伤害与碰撞。
+      const calm = !!(G.bullets && G.bullets.calm);
+      const brightness = calm ? 0.32 : 0.7;
       ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalCompositeOperation = 'source-over';
 
       for (const p of list) {
         const a = Math.max(0, p.life / p.max);
 
         if (p.kind === 'dot') {
-          ctx.globalAlpha = a;
+          ctx.globalAlpha = a * brightness;
           ctx.fillStyle = p.color;
           ctx.beginPath();
           ctx.arc(p.x, p.y, p.r * (0.35 + 0.65 * a), 0, Math.PI * 2);
           ctx.fill();
         } else if (p.kind === 'ring') {
-          ctx.globalAlpha = a * 0.8;
+          ctx.globalAlpha = a * 0.6 * brightness;
           ctx.strokeStyle = p.color;
           ctx.lineWidth = Math.max(0.5, p.w * a);
           ctx.beginPath();
@@ -218,7 +220,7 @@
           ctx.stroke();
         } else if (p.kind === 'bolt') {
           // 用两段折线模拟闪电的不规则感
-          ctx.globalAlpha = a;
+          ctx.globalAlpha = a * brightness;
           ctx.strokeStyle = p.color;
           ctx.lineWidth = 2.2;
           ctx.beginPath();
@@ -237,8 +239,16 @@
       ctx.save();
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      for (const p of list) {
+      ctx.globalCompositeOperation = 'source-over';
+      const notices = new Set();
+      for (let i = list.length - 1; i >= 0; i--) {
+        const p = list[i];
         if (p.kind !== 'text') continue;
+        // 高频回响/共鸣只显示最新一条，不把文字叠成飞机上方的亮柱。
+        if (calm && (p.str === '回响' || p.str === '🔔 共鸣')) {
+          if (notices.has(p.str)) continue;
+          notices.add(p.str);
+        }
         const a = Math.max(0, p.life / p.max);
         ctx.globalAlpha = a;
         ctx.font = '700 ' + p.size + 'px "Segoe UI", "Microsoft YaHei", sans-serif';
